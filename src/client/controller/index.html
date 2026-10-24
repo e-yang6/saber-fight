@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Saber Fight! Controller</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <!-- Screens shown/hidden by JS -->
+  <div id="screen-connect" class="screen active">
+    <h1>Saber Fight!</h1>
+    <button id="btn-connect" class="big-button">Tap to Connect</button>
+    <p id="connect-status"></p>
+  </div>
+
+  <div id="screen-no-token" class="screen">
+    <h1>No Token</h1>
+    <p>Scan the QR code on your laptop to connect.</p>
+  </div>
+
+  <div id="screen-full" class="screen">
+    <h1>Game Full</h1>
+    <p>Two players are already connected.</p>
+  </div>
+
+  <div id="screen-class-select" class="screen">
+    <h2>Select Class</h2>
+    <div id="class-list"></div>
+    <h2>Saber Color</h2>
+    <div id="color-list"></div>
+    <button id="btn-calibrate" class="big-button">Calibrate (point at screen)</button>
+    <button id="btn-ready" class="big-button">Ready</button>
+    <p id="ready-status"></p>
+  </div>
+
+  <div id="screen-game" class="screen">
+    <div id="game-controls">
+      <button id="btn-block" class="control-button">BLOCK</button>
+      <div id="power-area">
+        <button id="btn-power" class="control-button">POWER</button>
+        <p id="cooldown-text">Ready</p>
+      </div>
+    </div>
+    <button id="btn-recalibrate">Recalibrate</button>
+    <p id="player-label"></p>
+  </div>
+
+  <!-- Hidden iOS haptic element -->
+  <div id="haptic-container" aria-hidden="true">
+    <input type="checkbox" id="haptic-switch" switch>
+    <label id="haptic-label" for="haptic-switch"></label>
+  </div>
+
+  <div id="flash-overlay"></div>
+
+  <div id="debug-panel" style="display:none">
+    <button id="btn-test-haptics">Test Haptics</button>
+    <pre id="debug-log"></pre>
+  </div>
+
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>
