@@ -50,12 +50,18 @@
 
   <div id="power">
     <svg id="power-icon" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M13.5 1.5 4 13.5h6.5L9 22.5l10-12.5h-6.5z" />
+      <defs>
+        <path id="power-bolt" d="M13.5 1.5 4 13.5h6.5L9 22.5l10-12.5h-6.5z" />
+        <clipPath id="power-clip"><rect id="power-level" x="0" y="22.5" width="24" height="0" /></clipPath>
+        <linearGradient id="power-grad" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0" stop-color="#ff9a1a" />
+          <stop offset="1" stop-color="#ffe26a" />
+        </linearGradient>
+      </defs>
+      <use href="#power-bolt" class="power-empty" />
+      <use href="#power-bolt" class="power-full" clip-path="url(#power-clip)" />
+      <use href="#power-bolt" class="power-outline" />
     </svg>
-    <div id="power-info">
-      <span id="power-name"></span>
-      <div id="power-bar"><div id="power-fill"></div></div>
-    </div>
   </div>
 
   <div id="overlay" style="display:none">

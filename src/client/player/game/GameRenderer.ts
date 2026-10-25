@@ -32,6 +32,8 @@ const MENU_ORBIT_RADIUS = 16;
 const MENU_ORBIT_HEIGHT = 6;
 const MENU_ORBIT_SPEED = 0.12; // rad/s
 const MENU_FOV = 55;
+const POWER_BOLT_BOTTOM = 22.5;
+const POWER_BOLT_HEIGHT = 21;
 
 export class GameRenderer {
   private renderer: THREE.WebGLRenderer;
@@ -84,8 +86,7 @@ export class GameRenderer {
   private comboCountEl = document.getElementById('combo-count');
   private combo = 0;
   private powerEl = document.getElementById('power');
-  private powerFillEl = document.getElementById('power-fill');
-  private powerNameEl = document.getElementById('power-name');
+  private powerLevelEl = document.getElementById('power-level');
 
   constructor(canvas: HTMLCanvasElement, mySlot: PlayerSlot) {
     this.mySlot = mySlot;
@@ -265,15 +266,17 @@ export class GameRenderer {
   }
 
   private updatePowerMeter(me: FighterSnapshot, inMatch: boolean): void {
-    if (!this.powerEl || !this.powerFillEl || !this.powerNameEl) return;
+    if (!this.powerEl || !this.powerLevelEl) return;
     this.powerEl.classList.toggle('show', inMatch);
     if (!inMatch) return;
     const ability = CLASS_CONFIGS[me.className].ability;
     const ready = me.cooldownRemaining <= 0;
     const progress = ready ? 1 : 1 - me.cooldownRemaining / ability.cooldown;
     this.powerEl.classList.toggle('ready', ready);
-    this.powerFillEl.style.width = `${(progress * 100).toFixed(1)}%`;
-    this.powerNameEl.textContent = ready ? `${ability.name}: READY` : ability.name;
+    // The bolt spans y 1.5–22.5 in its 24-unit viewBox; the clip rect rises from the bottom
+    const h = progress * POWER_BOLT_HEIGHT;
+    this.powerLevelEl.setAttribute('y', (POWER_BOLT_BOTTOM - h).toFixed(2));
+    this.powerLevelEl.setAttribute('height', h.toFixed(2));
   }
 
   /** One swoosh per swing (rising edge with hysteresis), not one per snapshot */
