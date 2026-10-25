@@ -1,6 +1,11 @@
 import * as THREE from 'three';
 import { BLADE_LENGTH, BLADE_RADIUS, HILT_LENGTH } from '@shared/constants.js';
 
+const _tipLocal = new THREE.Vector3();
+const _baseLocal = new THREE.Vector3();
+const MAX_TRAIL_POINTS = 8;
+const MAX_TRAIL_AGE = 0.12; // snappy fade
+
 /**
  * Saber model: hilt + bright blade core + additive glow cylinder + motion trail.
  */
@@ -114,104 +119,158 @@ export class Saber {
       this.glowMat.opacity = 0.6;
     }
 
-    // Compute world positions
-    const tipLocal = new THREE.Vector3(0, HILT_LENGTH + this.bladeLength, 0);
-    const baseLocal = new THREE.Vector3(0, HILT_LENGTH, 0);
-    this.group.localToWorld(tipLocal);
-    this.group.localToWorld(baseLocal);
-    this.bladeTip.copy(tipLocal);
-    this.bladeBase.copy(baseLocal);
+    // Compute world positions using pre-allocated reusable vectors (0 GC)
+    _tipLocal.set(0, HILT_LENGTH + this.bladeLength, 0);
+    _baseLocal.set(0, HILT_LENGTH, 0);
+    this.group.localToWorld(_tipLocal);
+    this.group.localToWorld(_baseLocal);
+    this.bladeTip.copy(_tipLocal);
+    this.bladeBase.copy(_baseLocal);
 
     // Tip speed
-    this.tipSpeed = tipLocal.distanceTo(this.prevTip) / Math.max(dt, 0.001);
-    this.prevTip.copy(tipLocal);
+    this.tipSpeed = _tipLocal.distanceTo(this.prevTip) / Math.max(dt, 0.001);
+    this.prevTip.copy(_tipLocal);
 
-    // Update trail
-    this.trail.push(tipLocal.clone(), baseLocal.clone());
-    this.trail.update();
+    // Record trail point and update
+    this.trail.push(_tipLocal, _baseLocal);
+    this.trail.update(dt);
   }
 }
 
 /**
- * Motion trail rendered as a fading ribbon behind the blade.
+ * Ultra-performant, low-quality, light faint motion ribbon behind the sword.
+ * Fixed 8-point ring buffer, pre-allocated static index buffer, zero garbage collection.
  */
 class SaberTrail {
   readonly mesh: THREE.Mesh;
-  private positions: { tip: THREE.Vector3; base: THREE.Vector3; age: number }[] = [];
+  private points: { tip: THREE.Vector3; base: THREE.Vector3; age: number }[] = [];
   private geometry: THREE.BufferGeometry;
   private material: THREE.MeshBasicMaterial;
-  private maxPoints = 20;
-  private maxAge = 0.15; // seconds
+  private baseColor: THREE.Color;
+  private posArr: Float32Array;
+  private colorArr: Float32Array;
+  private posAttr: THREE.BufferAttribute;
+  private colorAttr: THREE.BufferAttribute;
 
   constructor(color: string) {
+    this.baseColor = new THREE.Color(color);
     this.geometry = new THREE.BufferGeometry();
+
+    const maxVerts = MAX_TRAIL_POINTS * 2;
+    this.posArr = new Float32Array(maxVerts * 3);
+    this.colorArr = new Float32Array(maxVerts * 3);
+
+    this.posAttr = new THREE.BufferAttribute(this.posArr, 3);
+    this.colorAttr = new THREE.BufferAttribute(this.colorArr, 3);
+    this.posAttr.setUsage(THREE.DynamicDrawUsage);
+    this.colorAttr.setUsage(THREE.DynamicDrawUsage);
+
+    this.geometry.setAttribute('position', this.posAttr);
+    this.geometry.setAttribute('color', this.colorAttr);
+
+    // Pre-allocate static index buffer for triangle strip once (0 GC per frame)
+    const indices = new Uint16Array((MAX_TRAIL_POINTS - 1) * 6);
+    for (let i = 0; i < MAX_TRAIL_POINTS - 1; i++) {
+      const a = i * 2;
+      const idx = i * 6;
+      indices[idx] = a;
+      indices[idx + 1] = a + 1;
+      indices[idx + 2] = a + 2;
+      indices[idx + 3] = a + 1;
+      indices[idx + 4] = a + 3;
+      indices[idx + 5] = a + 2;
+    }
+    this.geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+    this.geometry.setDrawRange(0, 0);
+
+    // Light, faint, additive ribbon material
     this.material = new THREE.MeshBasicMaterial({
-      color,
+      vertexColors: true,
       transparent: true,
-      opacity: 0.4,
+      opacity: 0.20,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       side: THREE.DoubleSide,
     });
     this.mesh = new THREE.Mesh(this.geometry, this.material);
+    this.mesh.frustumCulled = false;
 
-    // Pre-allocate buffer
-    const maxVerts = this.maxPoints * 2;
-    const posArray = new Float32Array(maxVerts * 3);
-    const alphaArray = new Float32Array(maxVerts);
-    this.geometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
-    this.geometry.setAttribute('alpha', new THREE.BufferAttribute(alphaArray, 1));
+    // Pre-allocate ring buffer entries
+    for (let i = 0; i < MAX_TRAIL_POINTS; i++) {
+      this.points.push({
+        tip: new THREE.Vector3(),
+        base: new THREE.Vector3(),
+        age: 999,
+      });
+    }
   }
 
   setColor(hex: string): void {
-    this.material.color.set(hex);
+    this.baseColor.set(hex);
   }
 
   push(tip: THREE.Vector3, base: THREE.Vector3): void {
-    this.positions.unshift({ tip, base, age: 0 });
-    if (this.positions.length > this.maxPoints) {
-      this.positions.pop();
+    const first = this.points[0];
+    // Only register a point if blade actually moved to avoid degenerate polygons
+    if (first.age < 999 && tip.distanceToSquared(first.tip) < 0.0004) {
+      return;
     }
+    // Shift elements in pre-allocated ring buffer
+    const last = this.points.pop()!;
+    last.tip.copy(tip);
+    last.base.copy(base);
+    last.age = 0;
+    this.points.unshift(last);
   }
 
-  update(): void {
-    const dt = 1 / 60;
-    const posAttr = this.geometry.getAttribute('position') as THREE.BufferAttribute;
-    const posArr = posAttr.array as Float32Array;
-
-    let vertIdx = 0;
-    for (let i = 0; i < this.positions.length; i++) {
-      const p = this.positions[i];
+  update(dt: number = 1 / 60): void {
+    let validCount = 0;
+    for (let i = 0; i < MAX_TRAIL_POINTS; i++) {
+      const p = this.points[i];
       p.age += dt;
-
-      posArr[vertIdx * 3] = p.tip.x;
-      posArr[vertIdx * 3 + 1] = p.tip.y;
-      posArr[vertIdx * 3 + 2] = p.tip.z;
-      vertIdx++;
-
-      posArr[vertIdx * 3] = p.base.x;
-      posArr[vertIdx * 3 + 1] = p.base.y;
-      posArr[vertIdx * 3 + 2] = p.base.z;
-      vertIdx++;
+      if (p.age <= MAX_TRAIL_AGE) {
+        validCount++;
+      }
     }
 
-    posAttr.needsUpdate = true;
-
-    // Build index for triangle strip
-    const indices: number[] = [];
-    for (let i = 0; i < this.positions.length - 1; i++) {
-      const a = i * 2;
-      indices.push(a, a + 1, a + 2);
-      indices.push(a + 1, a + 3, a + 2);
+    if (validCount < 2) {
+      this.geometry.setDrawRange(0, 0);
+      return;
     }
-    this.geometry.setIndex(indices);
 
-    // Fade based on age
-    this.material.opacity = this.positions.length > 2 ? 0.4 : 0;
+    const r = this.baseColor.r;
+    const g = this.baseColor.g;
+    const b = this.baseColor.b;
 
-    // Remove old entries
-    while (this.positions.length > 0 && this.positions[this.positions.length - 1].age > this.maxAge) {
-      this.positions.pop();
+    for (let i = 0; i < validCount; i++) {
+      const p = this.points[i];
+      const vertA = i * 2;
+      const vertB = vertA + 1;
+
+      // Position stream
+      this.posArr[vertA * 3] = p.tip.x;
+      this.posArr[vertA * 3 + 1] = p.tip.y;
+      this.posArr[vertA * 3 + 2] = p.tip.z;
+
+      this.posArr[vertB * 3] = p.base.x;
+      this.posArr[vertB * 3 + 1] = p.base.y;
+      this.posArr[vertB * 3 + 2] = p.base.z;
+
+      // Soft exponential alpha gradient from blade to tail
+      const fade = Math.max(0, 1 - (i / (validCount - 1)));
+      const alpha = fade * fade;
+
+      this.colorArr[vertA * 3] = r * alpha;
+      this.colorArr[vertA * 3 + 1] = g * alpha;
+      this.colorArr[vertA * 3 + 2] = b * alpha;
+
+      this.colorArr[vertB * 3] = r * alpha * 0.7;
+      this.colorArr[vertB * 3 + 1] = g * alpha * 0.7;
+      this.colorArr[vertB * 3 + 2] = b * alpha * 0.7;
     }
+
+    this.posAttr.needsUpdate = true;
+    this.colorAttr.needsUpdate = true;
+    this.geometry.setDrawRange(0, (validCount - 1) * 6);
   }
 }
