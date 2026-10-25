@@ -52,7 +52,7 @@ export const FALL_START_SPEED = 3;
 
 export const ROUNDS_TO_WIN = 2; // best of 3
 export const COUNTDOWN_SECONDS = 3;
-export const ROUND_END_DELAY_MS = 2500;
+export const ROUND_END_DELAY_MS = 3200;
 export const SLOWMO_DURATION_MS = 400;
 export const SLOWMO_FACTOR = 0.25;
 
