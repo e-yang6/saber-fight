@@ -173,6 +173,7 @@ export interface PlayerAssignedMsg {
   type: 'playerAssigned';
   slot: PlayerSlot;
   token: PlayerToken;
+  lanOrigin?: string;
 }
 
 export interface WaitingForOpponentMsg {

@@ -72,8 +72,15 @@ function hideOverlay(): void {
 
 // ─── QR code generation ─────────────────────────────────────────────
 
+let serverLanOrigin: string | null = null;
+
 function generateQR(token: string): void {
-  const controllerUrl = `${window.location.origin}/controller/?token=${token}`;
+  // If accessed via tunnel (not localhost/LAN IP), use the tunnel origin for the QR
+  const isLocalAccess = location.hostname === 'localhost'
+    || location.hostname === '127.0.0.1'
+    || location.hostname.match(/^(10|192\.168|172\.(1[6-9]|2\d|3[01]))\./);
+  const origin = isLocalAccess ? (serverLanOrigin || window.location.origin) : window.location.origin;
+  const controllerUrl = `${origin}/controller/?token=${token}`;
   QRCode.toCanvas(qrCanvas, controllerUrl, {
     width: 240,
     margin: 2,
@@ -113,6 +120,7 @@ function handleMessage(msg: ServerToPlayerMsg): void {
   switch (msg.type) {
     case 'playerAssigned': {
       mySlot = msg.slot;
+      if (msg.lanOrigin) serverLanOrigin = msg.lanOrigin;
       lobbyStatus.textContent = `You are Player ${msg.slot}`;
       generateQR(msg.token);
       controllerStatus.textContent = 'Scan the QR code with your phone';
@@ -131,17 +139,14 @@ function handleMessage(msg: ServerToPlayerMsg): void {
         }).catch(() => {});
       }
 
-      // Test mode: solo with bot opponent + keyboard controls
+      // Test mode: bot opponent, connect phone controller via QR
       if (isTest) {
-        debugBar.style.display = 'block';
-        const fake = new FakeController();
-        fake.start();
-        controllerStatus.textContent = 'Test mode: mouse=sword, space=block, E=power';
         send({ type: 'startSolo' });
+        controllerStatus.textContent = 'Test mode: scan QR with your phone to fight the bot';
       }
 
-      // Debug mode: fake controller but still needs 2 players
-      if (isDebug && !isTest) {
+      // Debug mode: keyboard/mouse instead of phone
+      if (isDebug) {
         debugBar.style.display = 'block';
         const fake = new FakeController();
         fake.start();
@@ -164,8 +169,8 @@ function handleMessage(msg: ServerToPlayerMsg): void {
 
     case 'gameState':
       handleGameState(msg.state);
-      // In test mode, auto-ready during class select (no phone to pick class)
-      if (isTest && msg.state === 'classSelect') {
+      // In debug mode (keyboard), auto-ready since there's no phone to pick class
+      if (isDebug && msg.state === 'classSelect') {
         send({ type: 'ready' });
       }
       break;
@@ -215,8 +220,8 @@ function handleMessage(msg: ServerToPlayerMsg): void {
 overlayBtn.addEventListener('click', () => {
   send({ type: 'rematch' });
   hideOverlay();
-  // In test mode, re-ready after rematch triggers classSelect
-  if (isTest) {
+  // In debug mode (keyboard), re-ready after rematch
+  if (isDebug) {
     setTimeout(() => send({ type: 'ready' }), 200);
   }
 });

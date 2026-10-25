@@ -1,9 +1,12 @@
 import express from 'express';
-import { createServer } from 'http';
+import { createServer as createHttpServer } from 'http';
+import { createServer as createHttpsServer } from 'https';
+import { readFileSync, existsSync } from 'fs';
 import { WebSocketServer } from 'ws';
 import { createServer as createViteServer } from 'vite';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { networkInterfaces } from 'os';
 import type { Duplex } from 'stream';
 import { GameSession } from './session.js';
 import { GameServer } from './GameServer.js';
@@ -15,11 +18,40 @@ import type {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '../..');
 const PORT = Number(process.env.PORT) || 3000;
+const HTTPS_PORT = Number(process.env.HTTPS_PORT) || 3443;
+
+function getLanIP(): string {
+  const nets = networkInterfaces();
+  // Prefer Wi-Fi / Ethernet, skip virtual adapters (VirtualBox, Bluetooth, etc.)
+  const skip = /virtual|vbox|vmware|bluetooth|loopback/i;
+  const prefer = /wi-fi|wifi|wlan|ethernet/i;
+  let fallback = '';
+  for (const name of Object.keys(nets)) {
+    if (skip.test(name)) continue;
+    for (const net of nets[name]!) {
+      if (net.family === 'IPv4' && !net.internal && !net.address.startsWith('169.') && !net.address.startsWith('192.168.56.')) {
+        if (prefer.test(name)) return net.address;
+        if (!fallback) fallback = net.address;
+      }
+    }
+  }
+  return fallback || 'localhost';
+}
 
 async function main() {
   const app = express();
-  const server = createServer(app);
   const session = new GameSession();
+
+  // Always run HTTP on PORT (for laptop + cloudflare tunnel)
+  const server = createHttpServer(app);
+
+  // Additionally run HTTPS on HTTPS_PORT for direct LAN phone access
+  const certPath = resolve(ROOT, 'cert.pem');
+  const keyPath = resolve(ROOT, 'key.pem');
+  const hasSSL = existsSync(certPath) && existsSync(keyPath);
+  const httpsServer = hasSSL
+    ? createHttpsServer({ cert: readFileSync(certPath), key: readFileSync(keyPath) }, app)
+    : null;
 
   // ─── Game engine ────────────────────────────────────────────────────
   const game = new GameServer({
@@ -62,15 +94,17 @@ async function main() {
   // ─── WebSocket server ─────────────────────────────────────────────
   const wss = new WebSocketServer({ noServer: true });
 
-  server.on('upgrade', (request, socket: Duplex, head) => {
+  function handleUpgrade(request: any, socket: Duplex, head: Buffer) {
     const pathname = new URL(request.url || '/', `http://${request.headers.host}`).pathname;
     if (pathname === '/ws') {
       wss.handleUpgrade(request, socket, head, (ws) => {
         wss.emit('connection', ws, request);
       });
     }
-    // Other upgrades (Vite HMR) pass through
-  });
+  }
+
+  server.on('upgrade', handleUpgrade);
+  if (httpsServer) httpsServer.on('upgrade', handleUpgrade);
 
   wss.on('connection', (ws, req) => {
     const url = new URL(req.url || '/', `http://${req.headers.host}`);
@@ -85,10 +119,16 @@ async function main() {
         return;
       }
 
+      const lanIP = getLanIP();
+      const lanOrigin = hasSSL
+        ? `https://${lanIP}:${HTTPS_PORT}`
+        : `http://${lanIP}:${PORT}`;
+
       ws.send(JSON.stringify({
         type: 'playerAssigned',
         slot: result.slot,
         token: result.token,
+        lanOrigin,
       }));
 
       // If both players now connected, start class select
@@ -188,12 +228,21 @@ async function main() {
     }
   });
 
-  server.listen(PORT, () => {
+  server.listen(PORT, '0.0.0.0', () => {
     console.log(`Saber Fight! server running at http://localhost:${PORT}`);
     console.log(`  Player:     http://localhost:${PORT}/player/`);
-    console.log(`  Controller: http://localhost:${PORT}/controller/`);
+    console.log(`  Test mode:  http://localhost:${PORT}/player/?test`);
     console.log(`\nFor phone access, run: npm run tunnel`);
   });
+
+  if (httpsServer) {
+    httpsServer.listen(HTTPS_PORT, '0.0.0.0', () => {
+      const lanIP = getLanIP();
+      console.log(`\n  HTTPS also running on port ${HTTPS_PORT} (LAN phone access)`);
+      console.log(`  Phone: https://${lanIP}:${HTTPS_PORT}/controller/?token=<from-QR>`);
+      console.log(`  (Accept the self-signed cert warning on your phone)`);
+    });
+  }
 }
 
 main().catch(console.error);

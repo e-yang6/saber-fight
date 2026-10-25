@@ -39,7 +39,18 @@ This runs `cloudflared tunnel --url http://localhost:3000` and gives you a tempo
 
 **Install cloudflared:** https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
 
-### Option B: mkcert (LAN)
+### Option B: ngrok (fallback if Cloudflare is rate-limited)
+
+```bash
+# In a second terminal:
+npx ngrok http 3000
+```
+
+Gives you an HTTPS URL like `https://xxxx.ngrok-free.app`. Open that on your laptop instead of localhost — QR codes will point phones to the tunnel.
+
+**Note:** ngrok free tier shows a "Visit Site" interstitial page. On your phone, you may need to open the base tunnel URL first, tap "Visit Site", then scan the QR code.
+
+### Option C: mkcert (LAN, no tunnel)
 
 ```bash
 mkcert -install
@@ -73,6 +84,14 @@ SSL_CERT=./localhost+1.pem SSL_KEY=./localhost+1-key.pem npm run dev
 | Striker | Overcharge | 15s | 4s of double knockback + longer blade |
 | Mystic | Barrier | 18s | 3s bubble that auto-blocks everything |
 | Phantom | Blink | 8s | Instant short dash in saber direction |
+
+## Test Mode (Solo)
+
+Add `?test` to the player URL: `http://localhost:3000/player/?test`
+
+- Spawns a bot opponent that swings, blocks, and moves around
+- Connect your phone controller via QR as normal — fight the bot with gyro
+- Great for testing phone mechanics without a second player
 
 ## Debug Mode
 
