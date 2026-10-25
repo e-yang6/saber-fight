@@ -17,7 +17,7 @@ const NAI_LONG_PALETTES: Record<PlayerSlot, NaiLongPalette> = {
   2: { body: 0x2f9cff, belly: 0xbfe4ff }, // sky blue
 };
 
-/** Body-local hand position: just in front of the belly, close to the server's hilt point */
+/** Body-local point where the floating saber hovers: in front of the belly, near the server's hilt point */
 const HAND_POS = new THREE.Vector3(0.14, 0.86, 0.4);
 
 /** Exponential smoothing rates (1/s). Higher = snappier; independent of frame rate. */
@@ -50,13 +50,14 @@ export class Fighter {
   /** Lives in the scene, not in `group`, so it still shows when the own body is hidden in FP */
   barrierMesh: THREE.Group | null = null;
   private barrierTime = 0;
+  private hoverTime = Math.random() * 10;
 
   constructor(slot: PlayerSlot) {
     this.slot = slot;
     this.group.add(this.body);
     this.buildNaiLong(NAI_LONG_PALETTES[slot]);
 
-    // Saber pivots at the hand, near where the server places the hilt for collision
+    // Floating saber pivots near where the server places the hilt for collision
     this.armGroup.position.copy(HAND_POS);
     this.group.add(this.armGroup);
     this.saber = new Saber();
@@ -65,7 +66,8 @@ export class Fighter {
 
   /**
    * Nai Long: a chubby bean-shaped dragon whose big domed head flows straight into the body,
-   * with a small open mouth and tongue, big green eyes, stubby clawed limbs and a cream belly.
+   * with a small open mouth and tongue, big green eyes, stubby clawed feet and a cream belly.
+   * No arms: the saber floats in front of the belly.
    * Built from primitives; faces +Z.
    * Wider than the collision capsule (radius BODY_CAPSULE_RADIUS) for the chubby look.
    */
@@ -93,15 +95,7 @@ export class Fighter {
       parent.add(m);
       return m;
     };
-    const limb = (from: THREE.Vector3, to: THREE.Vector3, radius: number) => {
-      const len = from.distanceTo(to);
-      const m = new THREE.Mesh(new THREE.CapsuleGeometry(radius, len, 4, 10), skin);
-      m.position.copy(from).add(to).multiplyScalar(0.5);
-      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), to.clone().sub(from).normalize());
-      m.castShadow = true;
-      this.body.add(m);
-    };
-    /** Three little brown claws poking out of a fist or foot, pointing along local +Z */
+    /** Three little brown toe claws, pointing along local +Z */
     const claws = (at: THREE.Vector3, size: number) => {
       for (const dx of [-1, 0, 1]) {
         blob(claw, [at.x + dx * size * 1.6, at.y, at.z], [size * 0.7, size * 0.7, size * 1.2]).castShadow = false;
@@ -140,17 +134,6 @@ export class Fighter {
     // Little tail
     const tail = blob(skin, [0, 0.3, -0.33], [0.12, 0.1, 0.18]);
     tail.rotation.x = 0.5;
-
-    // Sword arm: stubby limb from the shoulder to the clawed fist holding the hilt
-    limb(new THREE.Vector3(0.34, 1.0, 0.1), HAND_POS, 0.08);
-    blob(skin, [HAND_POS.x, HAND_POS.y, HAND_POS.z], [0.095, 0.09, 0.09]);
-    claws(new THREE.Vector3(HAND_POS.x, HAND_POS.y + 0.03, HAND_POS.z + 0.08), 0.02);
-
-    // Off arm raised in a little fist, like the figurine
-    const offFist = new THREE.Vector3(-0.42, 1.08, 0.3);
-    limb(new THREE.Vector3(-0.34, 0.98, 0.08), offFist, 0.08);
-    blob(skin, [offFist.x, offFist.y, offFist.z], [0.095, 0.09, 0.09]);
-    claws(new THREE.Vector3(offFist.x, offFist.y + 0.03, offFist.z + 0.08), 0.02);
   }
 
   /** Apply server snapshot. Pass opponent position so body faces them. */
@@ -203,6 +186,8 @@ export class Fighter {
     }
     this.group.rotation.y = this.bodyYaw;
     this.armGroup.quaternion.slerp(this.targetSaberQ, damp(SABER_SMOOTH, dt));
+    this.hoverTime += dt;
+    this.armGroup.position.y = HAND_POS.y + Math.sin(this.hoverTime * 2.5) * 0.025;
     this.saber.update(dt);
     this.updateReaction(dt);
 
