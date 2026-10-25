@@ -2,52 +2,135 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <title>Nailong Battle! Controller</title>
   <meta name="description" content="Phone motion controller for Nailong Battle!">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <!-- Screens shown/hidden by JS -->
-  <noscript><p style="padding:20px;font-size:18px;">If you see this on ngrok — open the base tunnel URL in your phone browser first, tap "Visit Site", then scan the QR code again.</p></noscript>
+  <noscript><p style="padding:20px;font-size:18px;">Please enable JavaScript to use the motion controller.</p></noscript>
 
+  <!-- Connect Screen -->
   <div id="screen-connect" class="screen active">
-    <h1>Nailong Battle!</h1>
-    <button id="btn-connect" class="big-button">Tap to Connect</button>
-    <p id="connect-status"></p>
-  </div>
-
-  <div id="screen-no-token" class="screen">
-    <h1>No Token</h1>
-    <p>Scan the QR code on your laptop to connect.</p>
-  </div>
-
-  <div id="screen-full" class="screen">
-    <h1>Game Full</h1>
-    <p>Two players are already connected.</p>
-  </div>
-
-  <div id="screen-class-select" class="screen">
-    <h2>Select Class</h2>
-    <div id="class-list"></div>
-    <h2>Saber Color</h2>
-    <div id="color-list"></div>
-    <button id="btn-calibrate" class="big-button">Calibrate (point at screen)</button>
-    <button id="btn-ready" class="big-button">Ready</button>
-    <p id="ready-status"></p>
-  </div>
-
-  <div id="screen-game" class="screen">
-    <div id="game-controls">
-      <button id="btn-block" class="control-button">BLOCK</button>
-      <div id="power-area">
-        <button id="btn-power" class="control-button">POWER</button>
-        <p id="cooldown-text">Ready</p>
-      </div>
+    <h1 class="game-title">Nailong Battle!</h1>
+    <div class="connect-card">
+      <button id="btn-connect" class="big-icon-action-btn connect-btn" aria-label="Tap to Connect" title="Connect">
+        <svg viewBox="0 0 48 48" class="btn-hero-icon" aria-hidden="true">
+          <path d="M14 10 L38 24 L14 38 Z" fill="#ffd23a" stroke="#2d1e0f" stroke-width="3.5" stroke-linejoin="round" />
+        </svg>
+      </button>
+      <p id="connect-status"></p>
     </div>
-    <button id="btn-recalibrate">Recalibrate</button>
-    <p id="player-label"></p>
+  </div>
+
+  <!-- No Token Screen -->
+  <div id="screen-no-token" class="screen">
+    <h1 class="game-title">Nailong Battle!</h1>
+    <div class="notice-card">
+      <div class="notice-icon-bubble">
+        <svg viewBox="0 0 24 24" class="notice-svg" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <rect x="7" y="7" width="3" height="3" fill="currentColor" />
+          <rect x="14" y="7" width="3" height="3" fill="currentColor" />
+          <rect x="7" y="14" width="3" height="3" fill="currentColor" />
+          <path d="M14 14 h3 v3" />
+        </svg>
+      </div>
+      <p class="notice-text">Scan QR code on desktop to join!</p>
+    </div>
+  </div>
+
+  <!-- Game Full Screen -->
+  <div id="screen-full" class="screen">
+    <h1 class="game-title">Nailong Battle!</h1>
+    <div class="notice-card">
+      <div class="notice-icon-bubble">
+        <svg viewBox="0 0 24 24" class="notice-svg" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+        </svg>
+      </div>
+      <p class="notice-text">Match Full (2/2 Players)</p>
+    </div>
+  </div>
+
+  <!-- Class & Color Select Screen -->
+  <div id="screen-class-select" class="screen">
+    <h1 class="game-title">Nailong Battle!</h1>
+    <div class="select-container">
+      <div id="class-list" class="class-grid" role="radiogroup" aria-label="Choose Fighter Class"></div>
+      <div id="color-list" class="color-row" role="radiogroup" aria-label="Choose Saber Color"></div>
+      <div class="select-action-bar">
+        <button id="btn-calibrate" class="tool-icon-btn" aria-label="Calibrate Orientation" title="Calibrate">
+          <svg viewBox="0 0 24 24" class="btn-svg" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="8" />
+            <circle cx="12" cy="12" r="2.5" fill="currentColor" />
+            <line x1="12" y1="1" x2="12" y2="4" />
+            <line x1="12" y1="20" x2="12" y2="23" />
+            <line x1="1" y1="12" x2="4" y2="12" />
+            <line x1="20" y1="12" x2="23" y2="12" />
+          </svg>
+        </button>
+        <button id="btn-ready" class="ready-icon-btn" aria-label="Ready to Duel" title="Ready">
+          <svg viewBox="0 0 24 24" class="btn-svg" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        </button>
+      </div>
+      <p id="ready-status"></p>
+    </div>
+  </div>
+
+  <!-- In-Game Battle Screen -->
+  <div id="screen-game" class="screen">
+    <header id="game-hud">
+      <button id="btn-recalibrate" class="hud-icon-btn" aria-label="Recalibrate Orientation" title="Recalibrate">
+        <svg viewBox="0 0 24 24" class="hud-svg" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <circle cx="12" cy="12" r="8" />
+          <circle cx="12" cy="12" r="2" fill="currentColor" />
+          <line x1="12" y1="1" x2="12" y2="4" />
+          <line x1="12" y1="20" x2="12" y2="23" />
+          <line x1="1" y1="12" x2="4" y2="12" />
+          <line x1="20" y1="12" x2="23" y2="12" />
+        </svg>
+      </button>
+      <div id="player-badge">
+        <span id="player-label">P1</span>
+      </div>
+    </header>
+
+    <main id="game-controls">
+      <!-- Upper Split Half: Block -->
+      <button id="btn-block" class="battle-touch-zone block-zone" aria-label="Block Attacks">
+        <div class="zone-content">
+          <svg viewBox="0 0 64 64" class="battle-icon shield-icon" aria-hidden="true">
+            <!-- Cartoon 3D Shield -->
+            <path class="shield-base" d="M32 6 L54 14 V30 C54 44 43 54 32 58 C21 54 10 44 10 30 V14 Z" />
+            <path class="shield-glare" d="M32 12 L46 18 V28 C46 38 39 46 32 49 C25 46 18 38 18 28 V18 Z" />
+            <path class="shield-core" d="M32 18 L40 22 V28 C40 34 36 39 32 41 C28 39 24 34 24 28 V22 Z" />
+          </svg>
+        </div>
+      </button>
+
+      <!-- Lower Split Half: Power -->
+      <div id="power-area">
+        <button id="btn-power" class="battle-touch-zone power-zone" aria-label="Power Ability">
+          <div class="zone-content">
+            <svg viewBox="0 0 64 64" class="battle-icon bolt-icon" aria-hidden="true">
+              <!-- Cartoon Energy Lightning Bolt -->
+              <path class="bolt-shadow" d="M37 4 L12 36 H29 L23 60 L52 26 H33 Z" />
+              <path class="bolt-main" d="M36 6 L14 36 H30 L25 58 L50 28 H33 Z" />
+              <path class="bolt-glare" d="M34 10 L19 33 H31 L27 50 L44 29 H31 Z" />
+            </svg>
+            <span id="cooldown-text" class="cooldown-badge"></span>
+          </div>
+        </button>
+      </div>
+    </main>
   </div>
 
   <!-- Hidden iOS haptic element -->
