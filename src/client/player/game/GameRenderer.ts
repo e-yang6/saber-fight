@@ -90,6 +90,9 @@ export class GameRenderer {
     this.scene.add(this.camera);
     this.scene.add(this.fpSaber.trail.mesh);
 
+    // Attach VFX flash plane to camera
+    this.vfx.attachToCamera(this.camera);
+
     // ─── Resize ─────────────────────────────────────────────────────
     window.addEventListener('resize', () => this.onResize());
 
@@ -122,20 +125,23 @@ export class GameRenderer {
     const oppSlot: PlayerSlot = this.mySlot === 1 ? 2 : 1;
     const oppFighterData = snap.fighters[oppSlot - 1];
 
-    // Update opponent visual
+    // Update opponent visual (pass my position so opponent body faces me)
     const opp = this.fighters.get(oppSlot)!;
-    opp.applySnapshot(oppFighterData);
+    opp.applySnapshot(oppFighterData, myFighterData.position);
 
     // Update own fighter state (for saber trail, even though body is hidden)
     const self = this.fighters.get(this.mySlot)!;
-    self.applySnapshot(myFighterData);
+    self.applySnapshot(myFighterData, oppFighterData.position);
 
     // Update first-person saber
     this.fpSaber.setColor(SABER_COLORS[myFighterData.saberColor]);
     this.fpSaber.setBladeScale(myFighterData.bladeScale);
-    // Apply saber orientation from snapshot to the FP saber
+    this.fpSaber.setBlocking(myFighterData.blocking);
+    // Convert world-space saber quaternion to camera-local space
     const sq = myFighterData.saberQ;
-    this.fpSaberGroup.quaternion.set(sq[0], sq[1], sq[2], sq[3]);
+    const worldQ = new THREE.Quaternion(sq[0], sq[1], sq[2], sq[3]);
+    const invCamQ = this.camera.quaternion.clone().invert();
+    this.fpSaberGroup.quaternion.copy(invCamQ.multiply(worldQ));
 
     // ─── Camera: first-person from own fighter's eyes ─────────────
     const myPos = myFighterData.position;
@@ -159,12 +165,17 @@ export class GameRenderer {
       this.camera.updateProjectionMatrix();
     }
 
-    // Update saber hum
-    Audio.updateHum(this.mySlot, myFighterData.tipSpeed);
-    Audio.updateHum(oppSlot, oppFighterData.tipSpeed);
-
-    if (myFighterData.tipSpeed > 3) Audio.playSwoosh(myFighterData.tipSpeed);
-    if (oppFighterData.tipSpeed > 3) Audio.playSwoosh(oppFighterData.tipSpeed);
+    // Sound: only during active gameplay (prevents spam after round end)
+    const active = snap.state === 'fighting' || snap.state === 'countdown';
+    if (active) {
+      Audio.updateHum(this.mySlot, myFighterData.tipSpeed);
+      Audio.updateHum(oppSlot, oppFighterData.tipSpeed);
+      if (myFighterData.tipSpeed > 3) Audio.playSwoosh(myFighterData.tipSpeed);
+      if (oppFighterData.tipSpeed > 3) Audio.playSwoosh(oppFighterData.tipSpeed);
+    } else {
+      Audio.updateHum(this.mySlot, 0);
+      Audio.updateHum(oppSlot, 0);
+    }
 
     // Handle game events (VFX + audio)
     for (const event of snap.events) {
@@ -176,22 +187,24 @@ export class GameRenderer {
     switch (event.kind) {
       case 'clash': {
         const p = new THREE.Vector3(...event.point);
-        this.vfx.spawnClashSparks(p, 25);
-        this.vfx.triggerScreenShake(0.8);
+        this.vfx.spawnClashSparks(p, 35);
+        this.vfx.triggerScreenShake(1.2);
+        this.vfx.screenFlash(0xffaa44, 0.2, 0.1);
         Audio.playClash();
         break;
       }
       case 'hit': {
         const p = new THREE.Vector3(...event.point);
         this.vfx.spawnHitFlash(p);
-        this.vfx.triggerScreenShake(0.5 + event.speed * 0.1);
+        this.vfx.triggerScreenShake(1.0 + event.speed * 0.15);
         Audio.playHit();
         break;
       }
       case 'block': {
         const p = new THREE.Vector3(...event.point);
-        this.vfx.spawnClashSparks(p, 10);
-        this.vfx.triggerScreenShake(0.3);
+        this.vfx.spawnBlockFlash(p);
+        this.vfx.spawnClashSparks(p, 15);
+        this.vfx.triggerScreenShake(0.6);
         Audio.playBlock();
         break;
       }
@@ -215,10 +228,25 @@ export class GameRenderer {
         Audio.playPowerup();
         break;
       }
-      case 'overcharge':
-      case 'barrier':
+      case 'overcharge': {
+        const f = this.fighters.get(event.slot);
+        if (f) {
+          const color = f.saber.bladeGlow.material instanceof THREE.MeshBasicMaterial
+            ? '#' + (f.saber.bladeGlow.material as THREE.MeshBasicMaterial).color.getHexString()
+            : '#ffaa00';
+          this.vfx.spawnOvercharge(f.group.position, color);
+        }
         Audio.playPowerup();
         break;
+      }
+      case 'barrier': {
+        const f = this.fighters.get(event.slot);
+        if (f) {
+          this.vfx.spawnBarrier(f.group.position);
+        }
+        Audio.playPowerup();
+        break;
+      }
     }
   }
 

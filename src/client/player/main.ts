@@ -36,6 +36,7 @@ const debugBar = document.getElementById('debug-bar')!;
 let mySlot: PlayerSlot | null = null;
 let renderer: GameRenderer | null = null;
 const isDebug = location.search.includes('debug');
+const isTest = location.search.includes('test');
 
 // ─── Screen management ──────────────────────────────────────────────
 
@@ -130,13 +131,20 @@ function handleMessage(msg: ServerToPlayerMsg): void {
         }).catch(() => {});
       }
 
-      // If debug mode, also start fake controller
-      if (isDebug) {
+      // Test mode: solo with bot opponent + keyboard controls
+      if (isTest) {
         debugBar.style.display = 'block';
         const fake = new FakeController();
         fake.start();
+        controllerStatus.textContent = 'Test mode: mouse=sword, space=block, E=power';
+        send({ type: 'startSolo' });
+      }
 
-        // In debug mode, auto-ready since there's no phone
+      // Debug mode: fake controller but still needs 2 players
+      if (isDebug && !isTest) {
+        debugBar.style.display = 'block';
+        const fake = new FakeController();
+        fake.start();
         controllerStatus.textContent = 'Debug mode: mouse=sword, space=block, E=power';
       }
       break;
@@ -156,6 +164,10 @@ function handleMessage(msg: ServerToPlayerMsg): void {
 
     case 'gameState':
       handleGameState(msg.state);
+      // In test mode, auto-ready during class select (no phone to pick class)
+      if (isTest && msg.state === 'classSelect') {
+        send({ type: 'ready' });
+      }
       break;
 
     case 'snapshot':
@@ -203,6 +215,10 @@ function handleMessage(msg: ServerToPlayerMsg): void {
 overlayBtn.addEventListener('click', () => {
   send({ type: 'rematch' });
   hideOverlay();
+  // In test mode, re-ready after rematch triggers classSelect
+  if (isTest) {
+    setTimeout(() => send({ type: 'ready' }), 200);
+  }
 });
 
 connectPlayer(handleMessage);

@@ -19,7 +19,6 @@ export default defineConfig({
     },
   },
   server: {
-    // Vite dev server not used directly — Express serves everything
-    // This config is for `vite build` only
+    allowedHosts: true,
   },
 });

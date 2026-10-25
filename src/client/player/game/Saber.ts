@@ -56,9 +56,33 @@ export class Saber {
     // Trail is added to the scene by the Game, not parented to saber
   }
 
+  private baseColor = '#4488ff';
+  private _blocking = false;
+
   setColor(hex: string): void {
-    this.glowMat.color.set(hex);
+    this.baseColor = hex;
+    if (!this._blocking) {
+      this.glowMat.color.set(hex);
+    }
     this.trail.setColor(hex);
+  }
+
+  setBlocking(blocking: boolean): void {
+    if (blocking === this._blocking) return;
+    this._blocking = blocking;
+    if (blocking) {
+      this.glowMat.color.set(0xffffff);
+      this.glowMat.opacity = 0.9;
+      this.coreMat.color.set(0xffffff);
+      this.bladeGlow.scale.x = 1.8;
+      this.bladeGlow.scale.z = 1.8;
+    } else {
+      this.glowMat.color.set(this.baseColor);
+      this.glowMat.opacity = 0.6;
+      this.coreMat.color.set(0xffffff);
+      this.bladeGlow.scale.x = 1;
+      this.bladeGlow.scale.z = 1;
+    }
   }
 
   setBladeScale(scale: number): void {

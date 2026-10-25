@@ -50,12 +50,13 @@ async function main() {
   // ─── Vite dev middleware ──────────────────────────────────────────
   const vite = await createViteServer({
     root: resolve(ROOT, 'src/client'),
-    server: { middlewareMode: true, hmr: { server } },
+    server: { middlewareMode: true, hmr: { server }, allowedHosts: true },
     resolve: {
       alias: { '@shared': resolve(ROOT, 'src/shared') },
     },
     appType: 'mpa',
   });
+  app.get('/', (_req, res) => res.redirect('/player/'));
   app.use(vite.middlewares);
 
   // ─── WebSocket server ─────────────────────────────────────────────
@@ -107,6 +108,14 @@ async function main() {
               break;
             case 'rematch':
               game.handleRematch();
+              break;
+            case 'headDodge':
+              game.moveFighter(slot, msg.dx, msg.dz);
+              break;
+            case 'startSolo':
+              if (game.getState() === 'lobby') {
+                game.startSolo();
+              }
               break;
             case 'fakeInput':
               // Debug: laptop sends input as if it were the phone controller

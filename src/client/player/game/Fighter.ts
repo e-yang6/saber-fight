@@ -17,8 +17,8 @@ export class Fighter {
   private armGroup = new THREE.Group();
   private targetPos = new THREE.Vector3();
   private targetSaberQ = new THREE.Quaternion();
+  private bodyYaw = 0;
 
-  // Barrier mesh (Mystic ability)
   barrierMesh: THREE.Mesh | null = null;
 
   constructor(slot: PlayerSlot) {
@@ -65,8 +65,7 @@ export class Fighter {
     rightLeg.castShadow = true;
     this.group.add(rightLeg);
 
-    // Arm + Saber
-    const armSide = slot === 1 ? 1 : -1;
+    // Arm + Saber (always on right side in body-local space)
     const armMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.6 });
     const armGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.35, 6);
     const upperArm = new THREE.Mesh(armGeo, armMat);
@@ -77,7 +76,7 @@ export class Fighter {
     forearm.castShadow = true;
     this.armGroup.add(forearm);
     this.armGroup.position.set(
-      armSide * (BODY_CAPSULE_RADIUS + 0.05),
+      BODY_CAPSULE_RADIUS + 0.05,
       BODY_CAPSULE_HEIGHT + BODY_CAPSULE_RADIUS,
       0,
     );
@@ -97,7 +96,7 @@ export class Fighter {
     offFore.castShadow = true;
     offArm.add(offFore);
     offArm.position.set(
-      -armSide * (BODY_CAPSULE_RADIUS + 0.05),
+      -(BODY_CAPSULE_RADIUS + 0.05),
       BODY_CAPSULE_HEIGHT + BODY_CAPSULE_RADIUS,
       0,
     );
@@ -105,34 +104,37 @@ export class Fighter {
     this.group.add(offArm);
   }
 
-  /** Apply server snapshot to update visuals */
-  applySnapshot(snap: FighterSnapshot): void {
+  /** Apply server snapshot. Pass opponent position so body faces them. */
+  applySnapshot(snap: FighterSnapshot, opponentPos?: [number, number, number]): void {
     this.targetPos.set(snap.position[0], snap.position[1], snap.position[2]);
-    this.targetSaberQ.set(snap.saberQ[0], snap.saberQ[1], snap.saberQ[2], snap.saberQ[3]);
+
+    // Dynamically face opponent
+    if (opponentPos) {
+      const dx = opponentPos[0] - snap.position[0];
+      const dz = opponentPos[2] - snap.position[2];
+      this.bodyYaw = Math.atan2(dx, dz);
+    }
+
+    // Convert world-space saber Q to body-local space
+    const worldQ = new THREE.Quaternion(snap.saberQ[0], snap.saberQ[1], snap.saberQ[2], snap.saberQ[3]);
+    const invBodyQ = new THREE.Quaternion().setFromAxisAngle(
+      new THREE.Vector3(0, 1, 0), -this.bodyYaw
+    );
+    this.targetSaberQ.copy(invBodyQ.multiply(worldQ));
 
     this.saber.setColor(SABER_COLORS[snap.saberColor]);
     this.saber.setBladeScale(snap.bladeScale);
+    this.saber.setBlocking(snap.blocking);
 
-    // Face opponent (rotate body to face forward)
-    if (this.slot === 2) {
-      this.group.rotation.y = Math.PI;
-    }
-
-    // Barrier visibility
     if (this.barrierMesh) {
       this.barrierMesh.visible = snap.abilityActive && snap.className === 'mystic';
     }
   }
 
-  /** Visual interpolation each frame */
   update(dt: number): void {
-    // Smooth position
-    this.group.position.lerp(this.targetPos, 0.3);
-
-    // Smooth saber rotation
-    this.armGroup.quaternion.slerp(this.targetSaberQ, 0.5);
-
-    // Update saber trail
+    this.group.position.lerp(this.targetPos, 0.5);
+    this.group.rotation.y = this.bodyYaw;
+    this.armGroup.quaternion.slerp(this.targetSaberQ, 0.7);
     this.saber.update(dt);
   }
 

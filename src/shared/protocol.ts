@@ -146,10 +146,24 @@ export interface FakeInputMsg {
   msg: OrientationMsg | ButtonMsg;
 }
 
+/** Webcam head tracking → character dodge movement */
+export interface HeadDodgeMsg {
+  type: 'headDodge';
+  dx: number;
+  dz: number;
+}
+
+/** Start a solo test match with a bot opponent */
+export interface StartSoloMsg {
+  type: 'startSolo';
+}
+
 export type PlayerToServerMsg =
   | PlayerReadyMsg
   | PlayerRematchMsg
-  | FakeInputMsg;
+  | FakeInputMsg
+  | HeadDodgeMsg
+  | StartSoloMsg;
 
 // ═══════════════════════════════════════════════════════════════════════
 // Server → Player Laptop

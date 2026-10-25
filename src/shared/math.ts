@@ -216,8 +216,26 @@ export class Quat {
     return new Quat(0, 0, 0, 1);
   }
 
+  /** Rotation around Y axis by angle radians */
+  static fromYaw(angle: number): Quat {
+    const half = angle / 2;
+    return new Quat(0, Math.sin(half), 0, Math.cos(half));
+  }
+
+  /** Rotation around an arbitrary axis by angle radians */
+  static fromAxisAngle(ax: number, ay: number, az: number, angle: number): Quat {
+    const half = angle / 2;
+    const s = Math.sin(half);
+    return new Quat(ax * s, ay * s, az * s, Math.cos(half));
+  }
+
   /** Pre-multiply: result = a * b */
   static multiply(a: Quat, b: Quat): Quat {
     return a.clone().multiply(b);
+  }
+
+  /** Slerp between two quaternions, returning a new Quat */
+  static slerp(a: Quat, b: Quat, t: number): Quat {
+    return a.clone().slerp(b, t);
   }
 }

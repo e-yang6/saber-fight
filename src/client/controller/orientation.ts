@@ -1,17 +1,13 @@
 /**
  * DeviceOrientation → quaternion conversion.
- * Phone held like a saber hilt: top edge (+Y) = blade direction.
- *
- * Uses the standard ZXY Euler→quaternion formula from Three.js DeviceOrientationControls,
- * accounting for screen orientation. Avoids gimbal lock by working in quaternions.
+ * Matches Three.js DeviceOrientationControls exactly:
+ *   1. YXZ Euler from (beta, alpha, -gamma)
+ *   2. Post-multiply by -90° X rotation (device→world)
+ *   3. Post-multiply by screen orientation around Z
  */
 
 const DEG2RAD = Math.PI / 180;
 
-// Reusable output
-const _q: [number, number, number, number] = [0, 0, 0, 1];
-
-// Screen orientation offset (portrait = 0)
 let screenOrientation = 0;
 
 export function initOrientation(): void {
@@ -33,49 +29,41 @@ export function orientationToQuaternion(
   beta: number,
   gamma: number
 ): [number, number, number, number] {
-  // ZXY intrinsic Tait-Bryan angles → quaternion
-  const a = alpha * DEG2RAD; // Z
-  const b = beta * DEG2RAD;  // X'
-  const g = gamma * DEG2RAD; // Y''
+  // YXZ Euler: Y=alpha, X=beta, Z=-gamma (Three.js convention)
+  const a = alpha * DEG2RAD;
+  const b = beta * DEG2RAD;
+  const g = -gamma * DEG2RAD;
 
-  const ca = Math.cos(a / 2);
-  const sa = Math.sin(a / 2);
-  const cb = Math.cos(b / 2);
-  const sb = Math.sin(b / 2);
-  const cg = Math.cos(g / 2);
-  const sg = Math.sin(g / 2);
+  const c1 = Math.cos(a / 2), s1 = Math.sin(a / 2);
+  const c2 = Math.cos(b / 2), s2 = Math.sin(b / 2);
+  const c3 = Math.cos(g / 2), s3 = Math.sin(g / 2);
 
-  // ZXY order
-  let x = sb * cg * ca - cb * sg * sa;
-  let y = cb * sg * ca + sb * cg * sa;
-  let z = cb * cg * sa + sb * sg * ca;
-  let w = cb * cg * ca - sb * sg * sa;
+  // YXZ quaternion
+  const x = s2 * c1 * c3 + c2 * s1 * s3;
+  const y = c2 * s1 * c3 - s2 * c1 * s3;
+  const z = c2 * c1 * s3 - s2 * s1 * c3;
+  const w = c2 * c1 * c3 + s2 * s1 * s3;
 
-  // Apply world-to-screen rotation (-90° around X to go from device to world coords)
-  // Equivalent to pre-multiplying by q(-π/2, X)
+  // Post-multiply by q1 = rotation(-π/2 around X) = (-√2/2, 0, 0, √2/2)
   const sq2 = Math.SQRT1_2;
-  const wx = w * (-sq2) + x * sq2;
-  const xx = x * sq2 + w * sq2;
-  const yx = y * sq2 + z * (-sq2);
-  const zx = z * sq2 + y * sq2;
+  let rx = sq2 * (x - w);
+  let ry = sq2 * (y - z);
+  let rz = sq2 * (y + z);
+  let rw = sq2 * (w + x);
 
-  // Apply screen orientation as a rotation around Z
+  // Post-multiply by screen orientation: rotation(-screenOrientation around Z)
   if (screenOrientation !== 0) {
     const so = -screenOrientation * DEG2RAD / 2;
     const cs = Math.cos(so);
     const ss = Math.sin(so);
-    _q[0] = xx * cs + yx * ss;
-    _q[1] = yx * cs - xx * ss;
-    _q[2] = zx * cs + wx * ss;
-    _q[3] = wx * cs - zx * ss;
-  } else {
-    _q[0] = xx;
-    _q[1] = yx;
-    _q[2] = zx;
-    _q[3] = wx;
+    const fx = rx * cs + ry * ss;
+    const fy = ry * cs - rx * ss;
+    const fz = rz * cs + rw * ss;
+    const fw = rw * cs - rz * ss;
+    return [fx, fy, fz, fw];
   }
 
-  return [_q[0], _q[1], _q[2], _q[3]];
+  return [rx, ry, rz, rw];
 }
 
 /**
@@ -86,20 +74,18 @@ export function orientationToQuaternion(
 export function computeYawOffset(
   alpha: number
 ): [number, number, number, number] {
-  // Yaw-only: rotation around Y axis by -alpha
   const halfA = -alpha * DEG2RAD / 2;
   return [0, Math.sin(halfA), 0, Math.cos(halfA)];
 }
 
 /**
  * Apply yaw offset to an orientation quaternion.
- * q_result = q_offset * q_raw
+ * q_result = q_offset * q_raw (pre-multiply)
  */
 export function applyYawOffset(
   q: [number, number, number, number],
   offset: [number, number, number, number]
 ): [number, number, number, number] {
-  // Hamilton product: offset * q
   const [ox, oy, oz, ow] = offset;
   const [qx, qy, qz, qw] = q;
   return [

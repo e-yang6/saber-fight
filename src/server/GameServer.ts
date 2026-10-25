@@ -17,7 +17,8 @@ import {
   BLADE_LENGTH, BLADE_RADIUS, HILT_LENGTH,
   BODY_CAPSULE_RADIUS, BODY_CAPSULE_HEIGHT,
   PLATFORM_RADIUS, FALL_THRESHOLD,
-  FIGHTER_START_DISTANCE, ROUNDS_TO_WIN,
+  FIGHTER_START_DISTANCE, IDEAL_FIGHT_DISTANCE, MIN_FIGHT_DISTANCE, AUTO_ADVANCE_SPEED,
+  ROUNDS_TO_WIN,
   COUNTDOWN_SECONDS, ROUND_END_DELAY_MS,
   SLOWMO_DURATION_MS, SLOWMO_FACTOR, SLERP_FACTOR,
 } from '../shared/constants.js';
@@ -31,6 +32,7 @@ class ServerFighter {
   saberQ = Quat.identity();
   targetQ = Quat.identity();
   smoothQ = Quat.identity();
+  worldSaberQ = Quat.identity();
   bladeTip = new Vec3();
   bladeBase = new Vec3();
   prevTip = new Vec3();
@@ -68,25 +70,49 @@ class ServerFighter {
     this.prevBase.copy(this.bladeBase);
   }
 
-  /** Compute blade world positions from saber quaternion */
-  updateBlade(): void {
+  /** Compute blade world positions from saber quaternion + facing toward opponent */
+  updateBlade(opponentPos: Vec3): void {
     this.prevTip.copy(this.bladeTip);
     this.prevBase.copy(this.bladeBase);
 
-    // Shoulder position relative to body (arm side depends on slot)
-    const armSide = this.slot === 1 ? 1 : -1;
-    const shoulderX = armSide * (BODY_CAPSULE_RADIUS + 0.05);
+    // Compute facing direction toward opponent (Y=0 plane)
+    const toOpp = Vec3.sub(opponentPos, this.position);
+    toOpp.y = 0;
+    const dist = Math.sqrt(toOpp.x * toOpp.x + toOpp.z * toOpp.z);
+    if (dist > 0.01) {
+      toOpp.x /= dist;
+      toOpp.z /= dist;
+    }
+
+    // Facing quaternion: rotate device -Z forward to point at opponent
+    const facingAngle = Math.atan2(-toOpp.x, -toOpp.z);
+    const facingQ = Quat.fromYaw(facingAngle);
+
+    // World saber quaternion = facing * phone orientation
+    this.worldSaberQ = Quat.multiply(facingQ, this.smoothQ);
+
+    // When blocking, slerp toward an inward guard pose (Wii Sports style)
+    if (this.blocking) {
+      // Guard pose: blade angled inward across body (~45° tilt on X, slight inward on Z)
+      // Built in facing-local space then composed with facingQ
+      const guardLocal = Quat.fromAxisAngle(1, 0, 0.3, -0.7);
+      guardLocal.normalize();
+      const guardWorld = Quat.multiply(facingQ, guardLocal);
+      this.worldSaberQ = Quat.slerp(this.worldSaberQ, guardWorld, 0.4);
+    }
+
+    // Shoulder position relative to body
     const shoulderY = BODY_CAPSULE_HEIGHT + BODY_CAPSULE_RADIUS;
 
-    // Hilt at end of arm, offset below shoulder
+    // Hilt in front of fighter (toward opponent), offset down from shoulder
     const hiltPos = new Vec3(
-      this.position.x + shoulderX,
+      this.position.x + toOpp.x * 0.3,
       this.position.y + shoulderY - 0.4,
-      this.position.z,
+      this.position.z + toOpp.z * 0.3,
     );
 
-    // Blade direction: saber quaternion rotates (0, 1, 0) upward
-    const bladeDir = this.smoothQ.rotateVec3(new Vec3(0, 1, 0));
+    // Blade direction from world saber quaternion
+    const bladeDir = this.worldSaberQ.rotateVec3(new Vec3(0, 1, 0));
 
     this.bladeBase.copy(hiltPos).addScaled(bladeDir, HILT_LENGTH);
     this.bladeTip.copy(this.bladeBase).addScaled(bladeDir, BLADE_LENGTH * this.bladeScale);
@@ -101,7 +127,7 @@ class ServerFighter {
   toSnapshot(): FighterSnapshot {
     return {
       position: this.position.toArray(),
-      saberQ: this.smoothQ.toArray(),
+      saberQ: this.worldSaberQ.toArray(),
       bladeTip: this.bladeTip.toArray(),
       bladeBase: this.bladeBase.toArray(),
       tipSpeed: this.tipSpeed,
@@ -143,6 +169,8 @@ export class GameServer {
   private lastTick = 0;
   private events: GameEvent[] = [];
   private cb: GameCallbacks;
+  private soloMode = false;
+  private botTime = 0;
 
   constructor(cb: GameCallbacks) {
     this.cb = cb;
@@ -206,8 +234,21 @@ export class GameServer {
       const f2 = this.fighters.get(2)!;
       f1.ready = false;
       f2.ready = false;
+      if (this.soloMode) {
+        f2.ready = true;
+      }
       this.setState('classSelect');
     }
+  }
+
+  /** Start solo mode — bot controls player 2 */
+  startSolo(): void {
+    this.soloMode = true;
+    const bot = this.fighters.get(2)!;
+    bot.className = 'striker';
+    bot.saberColor = 'red';
+    bot.ready = true;
+    this.setState('classSelect');
   }
 
   /** Move fighter position (for head tracking dodge from laptop) */
@@ -281,9 +322,14 @@ export class GameServer {
     f1.smoothQ.slerp(f1.targetQ, SLERP_FACTOR);
     f2.smoothQ.slerp(f2.targetQ, SLERP_FACTOR);
 
-    // Update blade positions
-    f1.updateBlade();
-    f2.updateBlade();
+    // Bot AI for solo mode
+    if (this.soloMode && this.state === 'fighting') {
+      this.updateBot(f2, f1, dt);
+    }
+
+    // Update blade positions (pass opponent pos for facing direction)
+    f1.updateBlade(f2.position);
+    f2.updateBlade(f1.position);
 
     // Compute tip speed
     f1.tipSpeed = f1.bladeTip.distanceTo(f1.prevTip) / Math.max(dt, 0.001);
@@ -297,6 +343,11 @@ export class GameServer {
     // Physics
     this.updatePhysics(f1, scaledDt, now);
     this.updatePhysics(f2, scaledDt, now);
+
+    // Wii Sports-style auto-advance: keep fighters at ideal distance
+    if (this.state === 'fighting' && f1.onPlatform && f2.onPlatform) {
+      this.autoMaintainDistance(f1, f2, scaledDt);
+    }
 
     // Check falls
     if (this.state === 'fighting') {
@@ -406,8 +457,9 @@ export class GameServer {
     knockback *= aCfg.knockbackDealt * dCfg.knockbackReceived;
     if (attacker.abilityActive && attacker.className === 'striker') knockback *= 2;
 
-    const dir = Vec3.sub(defender.position, attacker.position).normalize();
-    dir.y = 0.2;
+    const dir = Vec3.sub(defender.position, attacker.position);
+    dir.y = 0;
+    dir.normalize();
     defender.velocity.addScaled(dir, knockback);
 
     this.hitstopUntil = now + 40;
@@ -434,9 +486,37 @@ export class GameServer {
       f.position.addScaled(f.velocity, dt);
       f.velocity.scale(Math.max(0, 1 - 5 * dt));
     }
-    if (!f.onPlatform) {
+    if (f.onPlatform) {
+      f.position.y = 0;
+      f.velocity.y = 0;
+    } else {
       f.velocity.y -= 9.8 * dt;
       f.position.y += f.velocity.y * dt;
+    }
+  }
+
+  /** Wii Sports-style: auto-close or push apart to maintain ideal fighting distance */
+  private autoMaintainDistance(f1: ServerFighter, f2: ServerFighter, dt: number): void {
+    const dx = f2.position.x - f1.position.x;
+    const dz = f2.position.z - f1.position.z;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist < 0.01) return;
+
+    const nx = dx / dist;
+    const nz = dz / dist;
+
+    if (dist > IDEAL_FIGHT_DISTANCE) {
+      const advance = Math.min(AUTO_ADVANCE_SPEED * dt, (dist - IDEAL_FIGHT_DISTANCE) * 0.5);
+      f1.position.x += nx * advance;
+      f1.position.z += nz * advance;
+      f2.position.x -= nx * advance;
+      f2.position.z -= nz * advance;
+    } else if (dist < MIN_FIGHT_DISTANCE) {
+      const push = Math.min(AUTO_ADVANCE_SPEED * dt, (MIN_FIGHT_DISTANCE - dist) * 0.5);
+      f1.position.x -= nx * push;
+      f1.position.z -= nz * push;
+      f2.position.x += nx * push;
+      f2.position.z += nz * push;
     }
   }
 
@@ -467,6 +547,38 @@ export class GameServer {
 
   // ─── Abilities ────────────────────────────────────────────────────
 
+  private updateBot(bot: ServerFighter, human: ServerFighter, dt: number): void {
+    this.botTime += dt;
+    const t = this.botTime;
+
+    // Saber movement: smooth sine-wave patterns with occasional fast swings
+    const swingPhase = Math.sin(t * 1.2) * 0.4;
+    const sidePhase = Math.sin(t * 0.7 + 1.5) * 0.3;
+    const fastSwing = Math.sin(t * 4.5);
+    const attacking = fastSwing > 0.85;
+    const speed = attacking ? 3.0 : 1.0;
+
+    const yaw = sidePhase * speed;
+    const pitch = (swingPhase + (attacking ? -0.8 : 0)) * speed;
+    const cy = Math.cos(yaw / 2), sy = Math.sin(yaw / 2);
+    const cp = Math.cos(pitch / 2), sp = Math.sin(pitch / 2);
+    bot.targetQ.set(cy * sp, sy * cp, -sy * sp, cy * cp);
+
+    // Block periodically (every ~4s, hold for ~0.8s)
+    const blockCycle = t % 4.0;
+    bot.blocking = blockCycle > 3.0 && blockCycle < 3.8 && !attacking;
+
+    // Slight lateral drift
+    const drift = Math.sin(t * 0.5) * 0.3 * dt;
+    bot.position.x += drift;
+    const dist = Math.sqrt(bot.position.x ** 2 + bot.position.z ** 2);
+    if (dist > PLATFORM_RADIUS * 0.8) {
+      const s = (PLATFORM_RADIUS * 0.8) / dist;
+      bot.position.x *= s;
+      bot.position.z *= s;
+    }
+  }
+
   private activateAbility(slot: PlayerSlot): void {
     const f = this.fighters.get(slot)!;
     const now = performance.now();
@@ -480,8 +592,9 @@ export class GameServer {
 
     switch (f.className) {
       case 'guardian': {
-        const dir = Vec3.sub(opp.position, f.position).normalize();
-        dir.y = 0.3;
+        const dir = Vec3.sub(opp.position, f.position);
+        dir.y = 0;
+        dir.normalize();
         opp.velocity.addScaled(dir, 5);
         this.events.push({ kind: 'shockwave', position: f.position.toArray() });
         break;
