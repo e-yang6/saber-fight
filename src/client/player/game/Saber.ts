@@ -58,6 +58,16 @@ export class Saber {
 
   private baseColor = '#4488ff';
   private _blocking = false;
+  private _overcharged = false;
+  private pulseTime = 0;
+
+  setOvercharged(on: boolean): void {
+    this._overcharged = on;
+  }
+
+  get overcharged(): boolean {
+    return this._overcharged;
+  }
 
   setColor(hex: string): void {
     this.baseColor = hex;
@@ -94,6 +104,16 @@ export class Saber {
   }
 
   update(dt: number): void {
+    if (this._overcharged && !this._blocking) {
+      this.pulseTime += dt;
+      const pulse = 0.5 + 0.5 * Math.sin(this.pulseTime * 25);
+      this.bladeGlow.scale.x = this.bladeGlow.scale.z = 2.4 + pulse * 1.2;
+      this.glowMat.opacity = 0.75 + pulse * 0.25;
+    } else if (!this._blocking && this.bladeGlow.scale.x !== 1) {
+      this.bladeGlow.scale.x = this.bladeGlow.scale.z = 1;
+      this.glowMat.opacity = 0.6;
+    }
+
     // Compute world positions
     const tipLocal = new THREE.Vector3(0, HILT_LENGTH + this.bladeLength, 0);
     const baseLocal = new THREE.Vector3(0, HILT_LENGTH, 0);

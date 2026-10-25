@@ -15,6 +15,7 @@ export const HIT_COOLDOWN_MS = 350; // one hit per swing, not one per tick of ov
 export const CLASH_HITSTOP_MS = 120;
 export const BLOCK_STUN_MS = 700;
 export const BLOCK_ANGLE_TOLERANCE = 0.7; // dot product threshold for block angle
+export const GUARD_TRANSITION_MS = 100; // time for the blade to turn into / out of the guard pose
 
 // ─── Arena ──────────────────────────────────────────────────────────
 

@@ -218,8 +218,8 @@ export type GameEvent =
   | { kind: 'hit'; attacker: PlayerSlot; defender: PlayerSlot; point: Vec3Tuple; speed: number }
   | { kind: 'block'; blocker: PlayerSlot; point: Vec3Tuple }
   | { kind: 'fall'; slot: PlayerSlot }
-  | { kind: 'shockwave'; position: Vec3Tuple }
-  | { kind: 'blink'; from: Vec3Tuple; to: Vec3Tuple; color: string }
+  | { kind: 'shockwave'; slot: PlayerSlot; position: Vec3Tuple }
+  | { kind: 'blink'; slot: PlayerSlot; from: Vec3Tuple; to: Vec3Tuple; color: string }
   | { kind: 'overcharge'; slot: PlayerSlot }
   | { kind: 'barrier'; slot: PlayerSlot };
 

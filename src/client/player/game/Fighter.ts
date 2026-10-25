@@ -19,7 +19,9 @@ export class Fighter {
   private targetSaberQ = new THREE.Quaternion();
   private bodyYaw = 0;
 
-  barrierMesh: THREE.Mesh | null = null;
+  /** Lives in the scene, not in `group`, so it still shows when the own body is hidden in FP */
+  barrierMesh: THREE.Group | null = null;
+  private barrierTime = 0;
 
   constructor(slot: PlayerSlot) {
     this.slot = slot;
@@ -125,6 +127,7 @@ export class Fighter {
     this.saber.setColor(SABER_COLORS[snap.saberColor]);
     this.saber.setBladeScale(snap.bladeScale);
     this.saber.setBlocking(snap.blocking);
+    this.saber.setOvercharged(snap.abilityActive && snap.className === 'striker');
 
     if (this.barrierMesh) {
       this.barrierMesh.visible = snap.abilityActive && snap.className === 'mystic';
@@ -136,22 +139,41 @@ export class Fighter {
     this.group.rotation.y = this.bodyYaw;
     this.armGroup.quaternion.slerp(this.targetSaberQ, 0.7);
     this.saber.update(dt);
+
+    if (this.barrierMesh?.visible) {
+      this.barrierTime += dt;
+      const pulse = 0.5 + 0.5 * Math.sin(this.barrierTime * 8);
+      this.barrierMesh.position.set(this.group.position.x, this.group.position.y + 1, this.group.position.z);
+      this.barrierMesh.rotation.y = this.barrierTime * 0.8;
+      this.barrierMesh.scale.setScalar(1 + pulse * 0.05);
+      const [fill, wire] = this.barrierMesh.children as THREE.Mesh[];
+      (fill.material as THREE.MeshBasicMaterial).opacity = 0.18 + pulse * 0.12;
+      (wire.material as THREE.MeshBasicMaterial).opacity = 0.5 + pulse * 0.4;
+    } else {
+      this.barrierTime = 0;
+    }
   }
 
-  createBarrier(): THREE.Mesh {
-    const geo = new THREE.SphereGeometry(1.2, 16, 16);
-    const mat = new THREE.MeshBasicMaterial({
-      color: 0x8844ff,
+  createBarrier(scene: THREE.Scene): THREE.Group {
+    const shared = {
+      color: 0xaa66ff,
       transparent: true,
-      opacity: 0.2,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       side: THREE.DoubleSide,
-    });
-    this.barrierMesh = new THREE.Mesh(geo, mat);
+    } as const;
+    const fill = new THREE.Mesh(
+      new THREE.SphereGeometry(1.2, 24, 24),
+      new THREE.MeshBasicMaterial({ ...shared, opacity: 0.25 }),
+    );
+    const wire = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(1.22, 2),
+      new THREE.MeshBasicMaterial({ ...shared, opacity: 0.8, wireframe: true }),
+    );
+    this.barrierMesh = new THREE.Group();
+    this.barrierMesh.add(fill, wire);
     this.barrierMesh.visible = false;
-    this.group.add(this.barrierMesh);
-    this.barrierMesh.position.y = 1;
+    scene.add(this.barrierMesh);
     return this.barrierMesh;
   }
 }

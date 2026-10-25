@@ -7,14 +7,19 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import type { PlayerSlot, SnapshotMsg, FighterSnapshot, GameEvent } from '@shared/protocol.js';
+import type { PlayerSlot, SnapshotMsg, FighterSnapshot, GameEvent, ClassName } from '@shared/protocol.js';
 import { BODY_CAPSULE_HEIGHT, BODY_CAPSULE_RADIUS, HEAD_RADIUS } from '@shared/constants.js';
 import { createArena } from './Arena.js';
 import { Fighter } from './Fighter.js';
 import { Saber } from './Saber.js';
 import { VFX } from './VFX.js';
 import * as Audio from './Audio.js';
-import { SABER_COLORS } from '@shared/classes.js';
+import { SABER_COLORS, CLASS_CONFIGS } from '@shared/classes.js';
+
+const FP_SABER_REST = new THREE.Vector3(0.3, -0.4, -0.3);
+/** Raised and pulled toward the center so the cross-body guard fills the view */
+const FP_SABER_GUARD = new THREE.Vector3(0.15, -0.22, -0.45);
+const BASE_FOV = 70;
 
 export class GameRenderer {
   private renderer: THREE.WebGLRenderer;
@@ -41,6 +46,14 @@ export class GameRenderer {
   private lastCountdownVal = 3;
   private lastMyPos = new THREE.Vector3();
   private lastOppPos = new THREE.Vector3();
+
+  private mySaberWorldQ = new THREE.Quaternion();
+  private myBlocking = false;
+  private fpGuardBlend = 0;
+  private fovKick = 0;
+  private bladeSparkAccum = 0;
+  private calloutEl = document.getElementById('ability-callout');
+  private calloutTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(canvas: HTMLCanvasElement, mySlot: PlayerSlot) {
     this.mySlot = mySlot;
@@ -85,7 +98,7 @@ export class GameRenderer {
     this.fighters.set(opponentSlot, opponent);
     this.scene.add(opponent.group);
     this.scene.add(opponent.saber.trail.mesh);
-    opponent.createBarrier();
+    opponent.createBarrier(this.scene);
 
     // Own body — hidden in FP, visible during countdown intro
     const self = new Fighter(mySlot);
@@ -93,12 +106,13 @@ export class GameRenderer {
     this.fighters.set(mySlot, self);
     this.scene.add(self.group);
     this.scene.add(self.saber.trail.mesh);
+    self.createBarrier(this.scene);
 
     // First-person saber: rendered relative to camera
     this.fpSaber = new Saber('#4488ff');
     this.fpSaberGroup.add(this.fpSaber.group);
     // Position the saber in front of the camera, like an FPS weapon
-    this.fpSaberGroup.position.set(0.3, -0.4, -0.3);
+    this.fpSaberGroup.position.copy(FP_SABER_REST);
     this.camera.add(this.fpSaberGroup);
     this.scene.add(this.camera);
     this.scene.add(this.fpSaber.trail.mesh);
@@ -150,11 +164,10 @@ export class GameRenderer {
     this.fpSaber.setColor(SABER_COLORS[myFighterData.saberColor]);
     this.fpSaber.setBladeScale(myFighterData.bladeScale);
     this.fpSaber.setBlocking(myFighterData.blocking);
-    // Convert world-space saber quaternion to camera-local space
+    this.fpSaber.setOvercharged(myFighterData.abilityActive && myFighterData.className === 'striker');
+    this.myBlocking = myFighterData.blocking;
     const sq = myFighterData.saberQ;
-    const worldQ = new THREE.Quaternion(sq[0], sq[1], sq[2], sq[3]);
-    const invCamQ = this.camera.quaternion.clone().invert();
-    this.fpSaberGroup.quaternion.copy(invCamQ.multiply(worldQ));
+    this.mySaberWorldQ.set(sq[0], sq[1], sq[2], sq[3]);
 
     // Save latest positions
     const myPos = myFighterData.position;
@@ -236,25 +249,29 @@ export class GameRenderer {
       }
       case 'shockwave': {
         this.vfx.spawnShockwave(new THREE.Vector3(...event.position));
-        Audio.playPowerup();
+        Audio.playShockwave();
+        this.fovKick = Math.max(this.fovKick, 10);
+        this.showAbilityCallout(event.slot, 'guardian');
         break;
       }
       case 'blink': {
         const from = new THREE.Vector3(...event.from);
         const to = new THREE.Vector3(...event.to);
         this.vfx.spawnBlinkTrail(from, to, event.color);
-        Audio.playPowerup();
+        Audio.playBlink();
+        if (event.slot === this.mySlot) this.fovKick = Math.max(this.fovKick, 18);
+        this.showAbilityCallout(event.slot, 'phantom');
         break;
       }
       case 'overcharge': {
         const f = this.fighters.get(event.slot);
         if (f) {
-          const color = f.saber.bladeGlow.material instanceof THREE.MeshBasicMaterial
-            ? '#' + (f.saber.bladeGlow.material as THREE.MeshBasicMaterial).color.getHexString()
-            : '#ffaa00';
+          const color = '#' + (f.saber.bladeGlow.material as THREE.MeshBasicMaterial).color.getHexString();
           this.vfx.spawnOvercharge(f.group.position, color);
         }
-        Audio.playPowerup();
+        Audio.playOvercharge();
+        if (event.slot === this.mySlot) this.fovKick = Math.max(this.fovKick, 6);
+        this.showAbilityCallout(event.slot, 'striker');
         break;
       }
       case 'barrier': {
@@ -262,10 +279,23 @@ export class GameRenderer {
         if (f) {
           this.vfx.spawnBarrier(f.group.position);
         }
-        Audio.playPowerup();
+        Audio.playBarrier();
+        this.showAbilityCallout(event.slot, 'mystic');
         break;
       }
     }
+  }
+
+  /** Brief text line naming who used which ability */
+  private showAbilityCallout(slot: PlayerSlot, cls: ClassName): void {
+    if (!this.calloutEl) return;
+    const who = slot === this.mySlot ? 'You' : 'Opponent';
+    this.calloutEl.textContent = `${who}: ${CLASS_CONFIGS[cls].ability.name}`;
+    this.calloutEl.classList.remove('show');
+    void this.calloutEl.offsetWidth;
+    this.calloutEl.classList.add('show');
+    if (this.calloutTimer) clearTimeout(this.calloutTimer);
+    this.calloutTimer = setTimeout(() => this.calloutEl?.classList.remove('show'), 1800);
   }
 
   /**
@@ -365,9 +395,7 @@ export class GameRenderer {
       this.camera.position.copy(baseEye);
       this.camera.lookAt(oppHead.x, oppHead.y, oppHead.z);
 
-      if (this.camera.fov !== 70) {
-        this.camera.fov = 70;
-      }
+      this.camera.fov = BASE_FOV + this.fovKick;
 
       if (this.headOffset.lengthSq() > 0.0001) {
         this.applyOffAxisProjection();
@@ -392,11 +420,31 @@ export class GameRenderer {
       f.update(dt);
     }
 
-    // Update FP saber trail
-    this.fpSaber.update(dt);
+    this.fovKick *= Math.max(0, 1 - 5 * dt);
+    if (this.fovKick < 0.05) this.fovKick = 0;
 
     // Smooth camera updates (intro orbit or first-person)
     this.updateCamera(now);
+
+    // FP saber: world-space orientation → camera-local, after the camera has moved this frame
+    this.fpSaberGroup.quaternion.copy(this.camera.quaternion).invert().multiply(this.mySaberWorldQ);
+    this.fpGuardBlend += (this.myBlocking ? 1 : -1) * dt / 0.1;
+    this.fpGuardBlend = Math.min(1, Math.max(0, this.fpGuardBlend));
+    this.fpSaberGroup.position.lerpVectors(FP_SABER_REST, FP_SABER_GUARD, this.fpGuardBlend);
+    this.fpSaber.update(dt);
+
+    // Overcharged blades crackle continuously
+    this.bladeSparkAccum += dt;
+    if (this.bladeSparkAccum > 1 / 30) {
+      this.bladeSparkAccum = 0;
+      const opp = this.fighters.get(this.mySlot === 1 ? 2 : 1)!;
+      if (opp.saber.overcharged) {
+        this.vfx.spawnBladeSparks(opp.saber.bladeBase, opp.saber.bladeTip, '#' + (opp.saber.bladeGlow.material as THREE.MeshBasicMaterial).color.getHexString());
+      }
+      if (this.fpSaber.overcharged && this.fpSaberGroup.visible) {
+        this.vfx.spawnBladeSparks(this.fpSaber.bladeBase, this.fpSaber.bladeTip, '#' + (this.fpSaber.bladeGlow.material as THREE.MeshBasicMaterial).color.getHexString());
+      }
+    }
 
     // Screen shake
     const shake = this.vfx.getScreenShakeOffset();

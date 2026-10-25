@@ -36,6 +36,13 @@ h1 { font-weight: normal; font-size: 32px; }
 }
 #hud-center { font-size: 14px; color: var(--dim); }
 
+#ability-callout {
+  position: absolute; top: 56px; left: 0; right: 0; z-index: 6;
+  text-align: center; font-size: 22px; pointer-events: none;
+  opacity: 0; transition: opacity 0.4s ease;
+}
+#ability-callout.show { opacity: 1; transition: none; }
+
 #overlay {
   position: absolute; inset: 0; z-index: 20;
   display: flex; align-items: center; justify-content: center;

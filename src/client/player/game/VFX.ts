@@ -22,7 +22,7 @@ export class VFX {
     this.scene = scene;
     this.sparkGeo = new THREE.SphereGeometry(0.04, 4, 4);
 
-    for (let i = 0; i < 150; i++) {
+    for (let i = 0; i < 400; i++) {
       const mat = new THREE.MeshBasicMaterial({
         color: 0xffaa44,
         blending: THREE.AdditiveBlending,
@@ -182,119 +182,141 @@ export class VFX {
     }
   }
 
-  /** Shockwave ring (Guardian ability) — BIG expanding ring + flash + shake */
-  spawnShockwave(position: THREE.Vector3): void {
-    const geo = new THREE.RingGeometry(0.2, 0.8, 48);
+  /** Additive mesh that scales up and fades out, then removes itself */
+  private expandAndFade(
+    geo: THREE.BufferGeometry, color: number, position: THREE.Vector3,
+    duration: number, startScale: number, endScale: number, opacity = 1, delay = 0,
+    setup?: (mesh: THREE.Mesh) => void,
+  ): void {
     const mat = new THREE.MeshBasicMaterial({
-      color: 0x4488ff,
-      transparent: true,
-      opacity: 1,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      side: THREE.DoubleSide,
+      color, transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
     });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.copy(position);
-    mesh.position.y = 0.5;
-    mesh.rotation.x = -Math.PI / 2;
+    setup?.(mesh);
+    mesh.scale.setScalar(startScale);
     this.scene.add(mesh);
 
-    this.screenFlash(0x4488ff, 0.4, 0.3);
-    this.triggerScreenShake(2.0);
-
-    const startTime = performance.now();
+    const startTime = performance.now() + delay * 1000;
     const animate = () => {
-      const elapsed = (performance.now() - startTime) / 1000;
-      if (elapsed > 0.7) {
+      const t = (performance.now() - startTime) / 1000 / duration;
+      if (t > 1) {
         this.scene.remove(mesh);
         geo.dispose();
         mat.dispose();
         return;
       }
-      const scale = 1 + elapsed * 16;
-      mesh.scale.setScalar(scale);
-      mat.opacity = 1.0 * (1 - elapsed / 0.7);
+      if (t >= 0) {
+        const eased = 1 - (1 - t) ** 3;
+        mesh.scale.setScalar(startScale + (endScale - startScale) * eased);
+        mat.opacity = opacity * (1 - t);
+      }
       requestAnimationFrame(animate);
     };
     requestAnimationFrame(animate);
   }
 
-  /** Overcharge burst — saber power-up particles */
-  spawnOvercharge(position: THREE.Vector3, color: string): void {
-    for (let i = 0; i < 25; i++) {
+  private burst(
+    position: THREE.Vector3, count: number, color: THREE.ColorRepresentation,
+    velocity: () => THREE.Vector3, life: number, scale = 1.5,
+  ): void {
+    for (let i = 0; i < count; i++) {
       const mesh = this.getPooledSpark();
       if (!mesh) break;
       mesh.position.copy(position);
-      mesh.position.y += 1;
       mesh.visible = true;
-      mesh.scale.setScalar(1.5);
+      mesh.scale.setScalar(scale * (0.7 + Math.random() * 0.6));
       (mesh.material as THREE.MeshBasicMaterial).color.set(color);
-      const vel = new THREE.Vector3(
-        (Math.random() - 0.5) * 4,
-        2 + Math.random() * 4,
-        (Math.random() - 0.5) * 4,
-      );
-      this.particles.push({ mesh, velocity: vel, life: 0.5 + Math.random() * 0.3, maxLife: 0.7 });
+      const l = life * (0.7 + Math.random() * 0.6);
+      this.particles.push({ mesh, velocity: velocity(), life: l, maxLife: l });
     }
-    this.screenFlash(0xffaa00, 0.25, 0.2);
-    this.triggerScreenShake(0.8);
   }
 
-  /** Barrier activation — expanding sphere pulse */
+  /** Shockwave (Guardian) — three ground rings, a flash dome, and a radial dust blast */
+  spawnShockwave(position: THREE.Vector3): void {
+    const ground = new THREE.Vector3(position.x, 0.35, position.z);
+    const flat = (m: THREE.Mesh) => { m.rotation.x = -Math.PI / 2; };
+    for (let i = 0; i < 3; i++) {
+      this.expandAndFade(new THREE.RingGeometry(0.7, 1.0, 64), 0x66aaff, ground, 0.9, 0.3, 9 - i * 2, 1, i * 0.08, flat);
+    }
+    this.expandAndFade(
+      new THREE.SphereGeometry(1, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2),
+      0x88ccff, ground, 0.5, 0.2, 3.5, 0.6,
+    );
+    this.burst(new THREE.Vector3(position.x, 0.4, position.z), 70, 0x99ccff, () => {
+      const a = Math.random() * Math.PI * 2;
+      const s = 8 + Math.random() * 6;
+      return new THREE.Vector3(Math.cos(a) * s, 1 + Math.random() * 3, Math.sin(a) * s);
+    }, 0.6, 2);
+    this.screenFlash(0x4488ff, 0.55, 0.4);
+    this.triggerScreenShake(3.5);
+  }
+
+  /** Overcharge (Striker) — lightning column, shock ring, and a fountain of sparks */
+  spawnOvercharge(position: THREE.Vector3, color: string): void {
+    const c = new THREE.Color(color).getHex();
+    this.expandAndFade(
+      new THREE.CylinderGeometry(0.4, 0.4, 6, 16, 1, true), c,
+      new THREE.Vector3(position.x, 3, position.z), 0.5, 1, 2.5, 0.9,
+    );
+    this.expandAndFade(
+      new THREE.RingGeometry(0.6, 0.9, 48), c, new THREE.Vector3(position.x, 1, position.z),
+      0.5, 0.4, 4, 1, 0, (m) => { m.rotation.x = -Math.PI / 2; },
+    );
+    this.burst(new THREE.Vector3(position.x, 1, position.z), 60, color, () => new THREE.Vector3(
+      (Math.random() - 0.5) * 6, 4 + Math.random() * 6, (Math.random() - 0.5) * 6,
+    ), 0.8, 1.8);
+    this.screenFlash(c, 0.45, 0.3);
+    this.triggerScreenShake(1.8);
+  }
+
+  /** Crackling sparks along a blade (called every frame while overcharged) */
+  spawnBladeSparks(base: THREE.Vector3, tip: THREE.Vector3, color: string, count = 2): void {
+    const p = new THREE.Vector3();
+    for (let i = 0; i < count; i++) {
+      p.lerpVectors(base, tip, Math.random());
+      this.burst(p, 1, Math.random() > 0.4 ? color : 0xffffff, () => new THREE.Vector3(
+        (Math.random() - 0.5) * 3, Math.random() * 2, (Math.random() - 0.5) * 3,
+      ), 0.25, 0.8);
+    }
+  }
+
+  /** Barrier (Mystic) — bubble slams outward then settles, with an orbiting sparkle burst */
   spawnBarrier(position: THREE.Vector3): void {
-    const geo = new THREE.SphereGeometry(0.3, 16, 16);
-    const mat = new THREE.MeshBasicMaterial({
-      color: 0x8844ff,
-      transparent: true,
-      opacity: 0.7,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    });
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.copy(position);
-    mesh.position.y += 1;
-    this.scene.add(mesh);
-
-    this.screenFlash(0x8844ff, 0.3, 0.25);
-    this.triggerScreenShake(0.5);
-
-    const startTime = performance.now();
-    const animate = () => {
-      const elapsed = (performance.now() - startTime) / 1000;
-      if (elapsed > 0.4) {
-        this.scene.remove(mesh);
-        geo.dispose();
-        mat.dispose();
-        return;
-      }
-      mesh.scale.setScalar(1 + elapsed * 6);
-      mat.opacity = 0.7 * (1 - elapsed / 0.4);
-      requestAnimationFrame(animate);
-    };
-    requestAnimationFrame(animate);
+    const center = new THREE.Vector3(position.x, position.y + 1, position.z);
+    this.expandAndFade(new THREE.SphereGeometry(1, 24, 16), 0xaa66ff, center, 0.45, 0.3, 2.2, 0.8);
+    this.expandAndFade(new THREE.IcosahedronGeometry(1, 1), 0xddbbff, center, 0.6, 0.5, 1.8, 1, 0,
+      (m) => { (m.material as THREE.MeshBasicMaterial).wireframe = true; });
+    this.burst(center, 50, 0xcc99ff, () => {
+      const dir = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.3, Math.random() - 0.5).normalize();
+      return dir.multiplyScalar(4 + Math.random() * 2);
+    }, 0.6, 1.4);
+    this.screenFlash(0x8844ff, 0.45, 0.35);
+    this.triggerScreenShake(1.2);
   }
 
-  /** Blink trail (Phantom ability) */
+  /** Blink (Phantom) — fading afterimage at the start point and a dense streak to the end */
   spawnBlinkTrail(from: THREE.Vector3, to: THREE.Vector3, color: string): void {
-    for (let i = 0; i < 20; i++) {
-      const mesh = this.getPooledSpark();
-      if (!mesh) break;
-      const t = i / 20;
-      mesh.position.lerpVectors(from, to, t);
-      mesh.position.y += 0.5 + Math.random() * 0.5;
-      mesh.visible = true;
-      mesh.scale.setScalar(1.5);
-      (mesh.material as THREE.MeshBasicMaterial).color.set(color);
-      this.particles.push({
-        mesh,
-        velocity: new THREE.Vector3((Math.random() - 0.5) * 3, Math.random() * 3, (Math.random() - 0.5) * 3),
-        life: 0.4 + Math.random() * 0.3,
-        maxLife: 0.6,
-      });
+    const c = new THREE.Color(color).getHex();
+    this.expandAndFade(
+      new THREE.CapsuleGeometry(0.3, 1.1, 4, 12), c,
+      new THREE.Vector3(from.x, from.y + 0.85, from.z), 0.7, 1, 1.3, 0.8,
+    );
+    this.expandAndFade(
+      new THREE.CapsuleGeometry(0.3, 1.1, 4, 12), 0xffffff,
+      new THREE.Vector3(to.x, to.y + 0.85, to.z), 0.3, 1.4, 1, 0.7,
+    );
+    const p = new THREE.Vector3();
+    for (let i = 0; i < 60; i++) {
+      p.lerpVectors(from, to, i / 60);
+      p.y += 0.2 + Math.random() * 1.4;
+      this.burst(p, 1, i % 3 === 0 ? 0xffffff : color, () => new THREE.Vector3(
+        (Math.random() - 0.5) * 2, Math.random() * 2, (Math.random() - 0.5) * 2,
+      ), 0.6, 1.6);
     }
-    this.screenFlash(new THREE.Color(color).getHex(), 0.3, 0.15);
-    this.triggerScreenShake(0.6);
+    this.screenFlash(c, 0.4, 0.2);
+    this.triggerScreenShake(1.2);
   }
 
   triggerScreenShake(intensity: number): void {

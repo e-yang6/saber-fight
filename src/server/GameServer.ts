@@ -14,7 +14,7 @@ import type {
 import {
   SWING_SPEED_THRESHOLD, BASE_KNOCKBACK, KNOCKBACK_SPEED_SCALE,
   MAX_KNOCKBACK, KNOCKBACK_FRICTION, HIT_COOLDOWN_MS,
-  CLASH_HITSTOP_MS, BLOCK_STUN_MS, BLOCK_ANGLE_TOLERANCE,
+  CLASH_HITSTOP_MS, BLOCK_STUN_MS, BLOCK_ANGLE_TOLERANCE, GUARD_TRANSITION_MS,
   BLADE_LENGTH, BLADE_RADIUS, HILT_LENGTH,
   BODY_CAPSULE_RADIUS, BODY_CAPSULE_HEIGHT,
   PLATFORM_RADIUS, FALL_THRESHOLD,
@@ -25,6 +25,9 @@ import {
 } from '../shared/constants.js';
 
 // ─── Server-side fighter state ──────────────────────────────────────
+
+/** Guard pose: blade rolled 90° about the phone's screen normal so it lies across the body */
+const GUARD_OFFSET_Q = Quat.fromAxisAngle(0, 0, 1, Math.PI / 2);
 
 class ServerFighter {
   slot: PlayerSlot;
@@ -40,6 +43,8 @@ class ServerFighter {
   prevBase = new Vec3();
   tipSpeed = 0;
   blocking = false;
+  /** 0 = normal grip, 1 = fully in guard pose; eased toward `blocking` each tick */
+  guardBlend = 0;
   stunned = false;
   stunnedUntil = 0;
   hitImmuneUntil = 0;
@@ -67,6 +72,7 @@ class ServerFighter {
     this.stunned = false;
     this.hitImmuneUntil = 0;
     this.blocking = false;
+    this.guardBlend = 0;
     this.abilityActive = false;
     this.bladeScale = 1;
     this.prevTip.copy(this.bladeTip);
@@ -94,14 +100,13 @@ class ServerFighter {
     // World saber quaternion = facing * phone orientation
     this.worldSaberQ = Quat.multiply(facingQ, this.smoothQ);
 
-    // When blocking, slerp toward an inward guard pose (Wii Sports style)
-    if (this.blocking) {
-      // Guard pose: blade angled inward across body (~45° tilt on X, slight inward on Z)
-      // Built in facing-local space then composed with facingQ
-      const guardLocal = Quat.fromAxisAngle(1, 0, 0.3, -0.7);
-      guardLocal.normalize();
-      const guardWorld = Quat.multiply(facingQ, guardLocal);
-      this.worldSaberQ = Quat.slerp(this.worldSaberQ, guardWorld, 0.4);
+    // Guard pose (Wii Sports style): the blade turns across the body, still following the
+    // phone so the player can angle the guard. Collision uses this pose too.
+    if (this.guardBlend > 0) {
+      const g = this.guardBlend;
+      const eased = g * g * (3 - 2 * g);
+      const guardWorld = Quat.multiply(this.worldSaberQ, GUARD_OFFSET_Q);
+      this.worldSaberQ = Quat.slerp(this.worldSaberQ, guardWorld, eased);
     }
 
     // Shoulder position relative to body
@@ -171,6 +176,7 @@ export class GameServer {
   private tickInterval: ReturnType<typeof setInterval> | null = null;
   private lastTick = 0;
   private events: GameEvent[] = [];
+  private pendingEvents: GameEvent[] = [];
   private cb: GameCallbacks;
   private soloMode = false;
   private botTime = 0;
@@ -316,7 +322,9 @@ export class GameServer {
     else if (now < this.slowmoUntil) timeScale = SLOWMO_FACTOR;
     const scaledDt = dt * timeScale;
 
-    this.events = [];
+    // Events raised between ticks (abilities fire from input handlers) go out with this snapshot
+    this.events = this.pendingEvents;
+    this.pendingEvents = [];
 
     const f1 = this.fighters.get(1)!;
     const f2 = this.fighters.get(2)!;
@@ -324,6 +332,11 @@ export class GameServer {
     // Smooth saber orientations
     f1.smoothQ.slerp(f1.targetQ, SLERP_FACTOR);
     f2.smoothQ.slerp(f2.targetQ, SLERP_FACTOR);
+
+    const guardStep = (dt * 1000) / GUARD_TRANSITION_MS;
+    for (const f of [f1, f2]) {
+      f.guardBlend = Math.min(1, Math.max(0, f.guardBlend + (f.blocking ? guardStep : -guardStep)));
+    }
 
     // Bot AI for solo mode
     if (this.soloMode && this.state === 'fighting') {
@@ -583,6 +596,11 @@ export class GameServer {
     const blockCycle = t % 4.0;
     bot.blocking = blockCycle > 3.0 && blockCycle < 3.8 && !attacking;
 
+    // Use the ability now and then once it's off cooldown (~every 7s on average)
+    if (performance.now() >= bot.cooldownEnd && Math.random() < dt / 7) {
+      this.activateAbility(bot.slot);
+    }
+
     // Slight lateral drift, only well inside the platform (never clamp: knockback must ring it out)
     const drift = Math.sin(t * 0.5) * 0.3 * dt;
     const nextX = bot.position.x + drift;
@@ -595,7 +613,7 @@ export class GameServer {
     const f = this.fighters.get(slot)!;
     const now = performance.now();
     const cfg = CLASS_CONFIGS[f.className];
-    if (now < f.cooldownEnd) return;
+    if (this.state !== 'fighting' || now < f.cooldownEnd) return;
 
     f.cooldownEnd = now + cfg.ability.cooldown * 1000;
     this.cb.sendHaptic(slot, 'powerup');
@@ -608,20 +626,20 @@ export class GameServer {
         dir.y = 0;
         dir.normalize();
         opp.velocity.addScaled(dir, MAX_KNOCKBACK * KNOCKBACK_FRICTION);
-        this.events.push({ kind: 'shockwave', position: f.position.toArray() });
+        this.pendingEvents.push({ kind: 'shockwave', slot, position: f.position.toArray() });
         break;
       }
       case 'striker': {
         f.abilityActive = true;
         f.abilityEnd = now + cfg.ability.duration * 1000;
         f.bladeScale = 1.4;
-        this.events.push({ kind: 'overcharge', slot });
+        this.pendingEvents.push({ kind: 'overcharge', slot });
         break;
       }
       case 'mystic': {
         f.abilityActive = true;
         f.abilityEnd = now + cfg.ability.duration * 1000;
-        this.events.push({ kind: 'barrier', slot });
+        this.pendingEvents.push({ kind: 'barrier', slot });
         break;
       }
       case 'phantom': {
@@ -630,8 +648,8 @@ export class GameServer {
         bladeDir.normalize();
         const from = f.position.toArray() as Vec3Tuple;
         f.position.addScaled(bladeDir, 2.5);
-        this.events.push({
-          kind: 'blink', from, to: f.position.toArray(),
+        this.pendingEvents.push({
+          kind: 'blink', slot, from, to: f.position.toArray(),
           color: SABER_COLORS[f.saberColor],
         });
         break;
