@@ -85,6 +85,17 @@ export const CLASS_CONFIGS: Record<ClassName, ClassConfig> = {
   },
 };
 
+/** Player-facing summary of a class's stat multipliers, e.g. "+15% move speed" */
+export function classTraits(cfg: ClassConfig): { text: string; good: boolean }[] {
+  const pct = (m: number) => `${m > 1 ? '+' : '-'}${Math.round(Math.abs(m - 1) * 100)}%`;
+  const traits: { text: string; good: boolean }[] = [];
+  const { knockbackDealt, knockbackReceived, moveSpeed } = cfg.stats;
+  if (knockbackDealt !== 1) traits.push({ text: `${pct(knockbackDealt)} knockback dealt`, good: knockbackDealt > 1 });
+  if (knockbackReceived !== 1) traits.push({ text: `${pct(knockbackReceived)} knockback taken`, good: knockbackReceived < 1 });
+  if (moveSpeed !== 1) traits.push({ text: `${pct(moveSpeed)} move speed`, good: moveSpeed > 1 });
+  return traits;
+}
+
 export const SABER_COLORS: Record<SaberColor, string> = {
   blue: '#4488ff',
   red: '#ff3333',

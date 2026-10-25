@@ -15,6 +15,7 @@ import { Saber } from './Saber.js';
 import { VFX } from './VFX.js';
 import * as Audio from './Audio.js';
 import { SABER_COLORS, CLASS_CONFIGS } from '@shared/classes.js';
+import { CLASS_ICON_PATHS } from '@shared/classIcons.js';
 
 const FP_SABER_REST = new THREE.Vector3(0.3, -0.4, -0.3);
 /** Raised and pulled toward the center so the cross-body guard fills the view */
@@ -32,8 +33,9 @@ const MENU_ORBIT_RADIUS = 16;
 const MENU_ORBIT_HEIGHT = 6;
 const MENU_ORBIT_SPEED = 0.12; // rad/s
 const MENU_FOV = 55;
-const POWER_BOLT_BOTTOM = 22.5;
-const POWER_BOLT_HEIGHT = 21;
+/** Class icons span about y 4–46 of their 48-unit viewBox; the charge fill rises over that range */
+const POWER_ICON_BOTTOM = 46;
+const POWER_ICON_HEIGHT = 42;
 
 export class GameRenderer {
   private renderer: THREE.WebGLRenderer;
@@ -94,6 +96,7 @@ export class GameRenderer {
   private combo = 0;
   private powerEl = document.getElementById('power');
   private powerLevelEl = document.getElementById('power-level');
+  private powerIconClass: ClassName | null = null;
 
   constructor(canvas: HTMLCanvasElement, mySlot: PlayerSlot) {
     this.mySlot = mySlot;
@@ -243,13 +246,16 @@ export class GameRenderer {
         this.isCountdown = true;
         this.countdownStartTime = performance.now();
         this.lastCountdownVal = snap.countdown ?? 3;
+        Audio.playCountdownTick();
       } else if (snap.countdown !== undefined && snap.countdown !== this.lastCountdownVal) {
         this.lastCountdownVal = snap.countdown;
+        Audio.playCountdownTick();
         // Align smoothly with server countdown tick (3 -> 0s, 2 -> 1s, 1 -> 2s)
         const expectedElapsed = Math.max(0, (3 - snap.countdown) * 1000);
         this.countdownStartTime = performance.now() - expectedElapsed;
       }
     } else {
+      if (this.isCountdown && snap.state === 'fighting') Audio.playFight();
       this.isCountdown = false;
       this.countdownStartTime = 0;
     }
@@ -282,13 +288,18 @@ export class GameRenderer {
     if (!this.powerEl || !this.powerLevelEl) return;
     this.powerEl.classList.toggle('show', inMatch);
     if (!inMatch) return;
+    if (this.powerIconClass !== me.className) {
+      this.powerIconClass = me.className;
+      const paths = CLASS_ICON_PATHS[me.className];
+      document.getElementById('power-icon-empty')!.innerHTML = paths;
+      document.getElementById('power-icon-full')!.innerHTML = paths;
+    }
     const ability = CLASS_CONFIGS[me.className].ability;
     const ready = me.cooldownRemaining <= 0;
     const progress = ready ? 1 : 1 - me.cooldownRemaining / ability.cooldown;
     this.powerEl.classList.toggle('ready', ready);
-    // The bolt spans y 1.5–22.5 in its 24-unit viewBox; the clip rect rises from the bottom
-    const h = progress * POWER_BOLT_HEIGHT;
-    this.powerLevelEl.setAttribute('y', (POWER_BOLT_BOTTOM - h).toFixed(2));
+    const h = progress * POWER_ICON_HEIGHT;
+    this.powerLevelEl.setAttribute('y', (POWER_ICON_BOTTOM - h).toFixed(2));
     this.powerLevelEl.setAttribute('height', h.toFixed(2));
   }
 
@@ -341,6 +352,7 @@ export class GameRenderer {
         }
         if (smash) this.showSmash();
         Audio.playHit(strength, smash);
+        if (smash) Audio.playSmashVoice(event.attacker);
         break;
       }
       case 'block': {
@@ -623,6 +635,8 @@ export class GameRenderer {
         Audio.playDefeatSound();
       }
     }
+    if (isWinner) Audio.playMatchEndVoices(this.mySlot, oppSlot);
+    else Audio.playMatchEndVoices(oppSlot, this.mySlot);
 
     // Add cinematic overhead spotlight for dramatic scene focus
     if (!this.matchEndLight) {
@@ -653,6 +667,7 @@ export class GameRenderer {
     if (opp) opp.group.visible = true;
 
     this.vfx.clearEndGameVFX();
+    Audio.stopJingle();
 
     if (this.matchEndLight) {
       this.scene.remove(this.matchEndLight.target);

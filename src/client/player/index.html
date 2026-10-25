@@ -54,20 +54,18 @@
   <div id="combo"><span id="combo-count">0</span> COMBO</div>
 
   <button id="power" type="button" aria-label="Power Ability" title="Power Ability (E)">
-    <svg id="power-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <!-- Your class icon's shape, filled bottom-to-top as the power charges -->
+    <svg id="power-icon" viewBox="0 0 48 48" aria-hidden="true">
       <defs>
-        <path id="power-bolt" d="M13.5 1.5 4 13.5h6.5L9 22.5l10-12.5h-6.5z" />
-        <clipPath id="power-clip"><rect id="power-level" x="0" y="22.5" width="24" height="0" /></clipPath>
+        <clipPath id="power-clip"><rect id="power-level" x="0" y="46" width="48" height="0" /></clipPath>
         <linearGradient id="power-grad" x1="0" y1="1" x2="0" y2="0">
           <stop offset="0" stop-color="#ff9a1a" />
           <stop offset="1" stop-color="#ffe26a" />
         </linearGradient>
       </defs>
-      <use href="#power-bolt" class="power-empty" />
-      <use href="#power-bolt" class="power-full" clip-path="url(#power-clip)" />
-      <use href="#power-bolt" class="power-outline" />
+      <g id="power-icon-full" class="power-full" clip-path="url(#power-clip)"></g>
+      <g id="power-icon-empty" class="power-lines"></g>
     </svg>
-    <span class="power-key-badge">E</span>
   </button>
 
   <div id="overlay" style="display:none">
@@ -90,7 +88,7 @@
       <div class="round-scoreboard" id="round-scoreboard">
         <!-- Player 1 Box -->
         <div class="round-player-box" id="round-box-p1">
-          <div class="point-popup" id="point-popup-p1">+1 POINT</div>
+          <div class="point-popup" id="point-popup-p1">+1</div>
           <div class="round-player-meta">
             <span class="round-player-name" id="round-p1-label">YOU</span>
             <span class="round-player-tag">P1</span>
@@ -108,7 +106,7 @@
 
         <!-- Player 2 Box -->
         <div class="round-player-box" id="round-box-p2">
-          <div class="point-popup" id="point-popup-p2">+1 POINT</div>
+          <div class="point-popup" id="point-popup-p2">+1</div>
           <div class="round-player-meta">
             <span class="round-player-name" id="round-p2-label">OPPONENT</span>
             <span class="round-player-tag">P2</span>

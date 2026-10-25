@@ -85,6 +85,27 @@
     </div>
   </div>
 
+  <!-- Class Info Popup -->
+  <div id="class-info" class="info-backdrop" role="dialog" aria-modal="true" aria-labelledby="class-info-name">
+    <div class="info-sheet">
+      <button id="class-info-close" class="info-close" aria-label="Close">×</button>
+      <div id="class-info-icon" class="info-icon"></div>
+      <h2 id="class-info-name" class="info-name"></h2>
+      <div class="info-ability-card">
+        <svg viewBox="0 0 64 64" class="info-bolt" aria-hidden="true">
+          <path d="M36 6 L14 36 H30 L25 58 L50 28 H33 Z" fill="#fde047" stroke="#2d1e0f" stroke-width="4" stroke-linejoin="round" />
+        </svg>
+        <div>
+          <p id="class-info-ability" class="info-ability"></p>
+          <p id="class-info-desc" class="info-desc"></p>
+          <p id="class-info-cooldown" class="info-cooldown"></p>
+        </div>
+      </div>
+      <ul id="class-info-traits" class="info-traits"></ul>
+      <button id="class-info-pick" class="info-pick">Pick this class</button>
+    </div>
+  </div>
+
   <!-- In-Game Battle Screen -->
   <div id="screen-game" class="screen">
     <header id="game-hud">
@@ -120,12 +141,8 @@
       <div id="power-area">
         <button id="btn-power" class="battle-touch-zone power-zone" aria-label="Power Ability">
           <div class="zone-content">
-            <svg viewBox="0 0 64 64" class="battle-icon bolt-icon" aria-hidden="true">
-              <!-- Cartoon Energy Lightning Bolt -->
-              <path class="bolt-shadow" d="M37 4 L12 36 H29 L23 60 L52 26 H33 Z" />
-              <path class="bolt-main" d="M36 6 L14 36 H30 L25 58 L50 28 H33 Z" />
-              <path class="bolt-glare" d="M34 10 L19 33 H31 L27 50 L44 29 H31 Z" />
-            </svg>
+            <!-- Filled with the picked class's icon -->
+            <div id="power-icon" class="power-icon-wrap"></div>
             <span id="cooldown-text" class="cooldown-badge"></span>
           </div>
         </button>

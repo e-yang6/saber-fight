@@ -4,7 +4,8 @@
  */
 
 import type { PlayerSlot, ClassName, SaberColor, ServerToControllerMsg } from '@shared/protocol.js';
-import { CLASS_CONFIGS, SABER_COLORS } from '@shared/classes.js';
+import { CLASS_CONFIGS, SABER_COLORS, classTraits } from '@shared/classes.js';
+import { classIconSvg } from '@shared/classIcons.js';
 import { ORIENTATION_SEND_RATE } from '@shared/constants.js';
 import { connect, send } from './network.js';
 import { initOrientation, orientationToQuaternion, computeYawOffset, applyYawOffset } from './orientation.js';
@@ -44,6 +45,7 @@ const readyStatus = document.getElementById('ready-status')!;
 const btnBlock = document.getElementById('btn-block') as HTMLButtonElement;
 const btnPower = document.getElementById('btn-power') as HTMLButtonElement;
 const cooldownText = document.getElementById('cooldown-text')!;
+const powerIcon = document.getElementById('power-icon')!;
 const btnRecalibrate = document.getElementById('btn-recalibrate') as HTMLButtonElement;
 const playerLabel = document.getElementById('player-label')!;
 const btnTestHaptics = document.getElementById('btn-test-haptics') as HTMLButtonElement;
@@ -145,39 +147,15 @@ function calibrate() {
 
 // ─── Class SVG Icons ────────────────────────────────────────────────
 
-const CLASS_ICONS: Record<ClassName, string> = {
-  guardian: `
-    <svg viewBox="0 0 48 48" class="class-svg-icon" fill="none" aria-hidden="true">
-      <path d="M24 4 L42 10 V24 C42 34 33 42 24 45 C15 42 6 34 6 24 V10 Z" fill="#3b82f6" stroke="#2d1e0f" stroke-width="3" stroke-linejoin="round"/>
-      <path d="M24 10 L36 14 V24 C36 31 30 37 24 39 C18 37 12 31 12 24 V14 Z" fill="#60a5fa" stroke="#2d1e0f" stroke-width="2" stroke-linejoin="round"/>
-      <path d="M24 16 L26.5 21.5 L32 22.5 L28 26.5 L29 32 L24 29 L19 32 L20 26.5 L16 22.5 L21.5 21.5 Z" fill="#ffffff" stroke="#2d1e0f" stroke-width="1.5" stroke-linejoin="round"/>
-    </svg>`,
-  striker: `
-    <svg viewBox="0 0 48 48" class="class-svg-icon" fill="none" aria-hidden="true">
-      <path d="M10 38 L34 10 L38 14 L14 42 Z" fill="#ef4444" stroke="#2d1e0f" stroke-width="2.5" stroke-linejoin="round"/>
-      <path d="M34 10 L40 6 L42 8 L38 14 Z" fill="#fef08a" stroke="#2d1e0f" stroke-width="2"/>
-      <path d="M7 35 L13 41 L10 44 L4 38 Z" fill="#b91c1c" stroke="#2d1e0f" stroke-width="2"/>
-      <path d="M38 38 L14 10 L10 14 L34 42 Z" fill="#f97316" stroke="#2d1e0f" stroke-width="2.5" stroke-linejoin="round"/>
-      <path d="M14 10 L8 6 L6 8 L10 14 Z" fill="#fef08a" stroke="#2d1e0f" stroke-width="2"/>
-      <path d="M41 35 L35 41 L38 44 L44 38 Z" fill="#c2410c" stroke="#2d1e0f" stroke-width="2"/>
-      <circle cx="24" cy="24" r="3.5" fill="#ffffff" stroke="#2d1e0f" stroke-width="2"/>
-    </svg>`,
-  mystic: `
-    <svg viewBox="0 0 48 48" class="class-svg-icon" fill="none" aria-hidden="true">
-      <circle cx="24" cy="24" r="13" fill="#a855f7" stroke="#2d1e0f" stroke-width="3"/>
-      <circle cx="21" cy="21" r="9" fill="#c084fc"/>
-      <circle cx="18" cy="18" r="3" fill="#ffffff"/>
-      <ellipse cx="24" cy="24" rx="19" ry="6.5" transform="rotate(-25 24 24)" stroke="#2d1e0f" stroke-width="3" fill="none"/>
-      <ellipse cx="24" cy="24" rx="19" ry="6.5" transform="rotate(-25 24 24)" stroke="#fef08a" stroke-width="1.8" fill="none"/>
-      <path d="M37 10 L38.5 13.5 L42 15 L38.5 16.5 L37 20 L35.5 16.5 L32 15 L35.5 13.5 Z" fill="#ffffff" stroke="#2d1e0f" stroke-width="1.5"/>
-    </svg>`,
-  phantom: `
-    <svg viewBox="0 0 48 48" class="class-svg-icon" fill="none" aria-hidden="true">
-      <path d="M8 20 L16 20 M6 26 L18 26 M10 32 L20 32" stroke="#047857" stroke-width="3" stroke-linecap="round"/>
-      <path d="M28 4 L14 26 H26 L20 44 L40 18 H26 Z" fill="#10b981" stroke="#2d1e0f" stroke-width="3" stroke-linejoin="round"/>
-      <path d="M26 10 L19 24 H28 L23 37 L34 20 H25 Z" fill="#a7f3d0"/>
-    </svg>`,
-};
+const CLASS_ICONS = Object.fromEntries(
+  (Object.keys(CLASS_CONFIGS) as ClassName[]).map((n) => [n, classIconSvg(n, 'class-svg-icon')]),
+) as Record<ClassName, string>;
+
+/** The power button shows the icon of the class you picked */
+function updatePowerIcon() {
+  powerIcon.innerHTML = classIconSvg(selectedClass, 'battle-icon bolt-icon');
+}
+updatePowerIcon();
 
 // ─── Class/color selection UI ───────────────────────────────────────
 
@@ -190,12 +168,14 @@ function buildClassSelect() {
     btn.setAttribute('aria-label', cfg.displayName);
     btn.setAttribute('title', `${cfg.displayName}: ${cfg.ability.name}`);
     if (cfg.name === selectedClass) btn.classList.add('selected');
-    btn.innerHTML = `<div class="class-icon-wrap">${CLASS_ICONS[cfg.name]}</div>`;
-    btn.addEventListener('click', () => {
-      selectedClass = cfg.name;
-      selectedColor = cfg.defaultColor;
-      updateSelectionUI();
-      send({ type: 'classSelect', className: selectedClass, saberColor: selectedColor });
+    btn.innerHTML = `<div class="class-icon-wrap">${CLASS_ICONS[cfg.name]}</div>
+      <span class="class-info-btn" role="button" tabindex="0" aria-label="${cfg.displayName} ability info">i</span>`;
+    btn.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('.class-info-btn')) {
+        openClassInfo(cfg.name);
+        return;
+      }
+      pickClass(cfg.name);
     });
     classList.appendChild(btn);
   }
@@ -217,6 +197,52 @@ function buildClassSelect() {
     colorList.appendChild(btn);
   }
 }
+
+function pickClass(name: ClassName) {
+  selectedClass = name;
+  selectedColor = CLASS_CONFIGS[name].defaultColor;
+  updateSelectionUI();
+  send({ type: 'classSelect', className: selectedClass, saberColor: selectedColor });
+}
+
+// ─── Class info popup ───────────────────────────────────────────────
+
+const classInfo = document.getElementById('class-info')!;
+let infoClass: ClassName = 'guardian';
+
+function openClassInfo(name: ClassName) {
+  const cfg = CLASS_CONFIGS[name];
+  infoClass = name;
+  haptic('hit_landed');
+  document.getElementById('class-info-icon')!.innerHTML = CLASS_ICONS[name];
+  document.getElementById('class-info-name')!.textContent = cfg.displayName;
+  document.getElementById('class-info-ability')!.textContent = cfg.ability.name;
+  document.getElementById('class-info-desc')!.textContent = `${cfg.ability.description}.`;
+  document.getElementById('class-info-cooldown')!.textContent =
+    `${cfg.ability.cooldown}s cooldown${cfg.ability.duration ? ` · lasts ${cfg.ability.duration}s` : ''}`;
+  const traits = document.getElementById('class-info-traits')!;
+  traits.innerHTML = '';
+  for (const t of classTraits(cfg)) {
+    const li = document.createElement('li');
+    li.className = t.good ? 'trait good' : 'trait bad';
+    li.textContent = t.text;
+    traits.appendChild(li);
+  }
+  classInfo.classList.add('open');
+}
+
+function closeClassInfo() {
+  classInfo.classList.remove('open');
+}
+
+classInfo.addEventListener('click', (e) => {
+  if (e.target === classInfo) closeClassInfo();
+});
+document.getElementById('class-info-close')!.addEventListener('click', closeClassInfo);
+document.getElementById('class-info-pick')!.addEventListener('click', () => {
+  pickClass(infoClass);
+  closeClassInfo();
+});
 
 function updateSelectionUI() {
   classList.querySelectorAll('button').forEach(b => {
@@ -285,6 +311,7 @@ function handleMessage(msg: ServerToControllerMsg) {
 
     case 'gameState':
       if (msg.state === 'fighting') {
+        updatePowerIcon();
         showScreen('game');
       } else if (msg.state === 'classSelect' || msg.state === 'lobby') {
         showScreen('classSelect');

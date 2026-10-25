@@ -134,34 +134,6 @@ function showOverlay(title: string, subtitle: string, showBtn = false, isCountdo
   overlayBtn.style.display = showBtn ? 'inline-block' : 'none';
 }
 
-function spawnRoundParticles(container: HTMLElement, count = 32): void {
-  container.innerHTML = '';
-  const colors = ['#ffd23a', '#f59e0b', '#ffffff', '#38bdf8', '#fbbf24', '#f1f5f9'];
-  for (let i = 0; i < count; i++) {
-    const p = document.createElement('div');
-    p.className = 'round-spark';
-    const size = Math.random() * 8 + 6;
-    p.style.width = `${size}px`;
-    p.style.height = `${size * (Math.random() > 0.4 ? 1 : 1.6)}px`;
-    p.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
-    p.style.left = '50%';
-    p.style.top = '40%';
-
-    const angle = Math.random() * Math.PI * 2;
-    const dist = Math.random() * 240 + 70;
-    const tx = Math.cos(angle) * dist;
-    const ty = Math.sin(angle) * dist - 30; // slight upward lift
-    const rot = (Math.random() - 0.5) * 720;
-
-    p.style.setProperty('--tx', `${tx}px`);
-    p.style.setProperty('--ty', `${ty}px`);
-    p.style.setProperty('--rot', `${rot}deg`);
-    p.style.animationDelay = `${Math.random() * 0.15}s`;
-
-    container.appendChild(p);
-  }
-}
-
 function showRoundResultOverlay(
   isWinner: boolean,
   winningSlot: PlayerSlot,
@@ -181,20 +153,19 @@ function showRoundResultOverlay(
   if (isWinner) {
     overlay.classList.remove('round-lose-mode');
     overlay.classList.add('round-win-mode');
-    roundKicker.textContent = `ROUND ${roundNum} VICTORY`;
-    roundTitle.textContent = 'ROUND WON!';
-    roundSubtitle.textContent = 'POINT SECURED!';
+    roundKicker.textContent = `Round ${roundNum}`;
+    roundTitle.textContent = 'You won the round!';
+    roundSubtitle.textContent = '';
     playRoundWinSound();
-    spawnRoundParticles(roundParticles, 36);
   } else {
     overlay.classList.remove('round-win-mode');
     overlay.classList.add('round-lose-mode');
-    roundKicker.textContent = `ROUND ${roundNum} CONCEDED`;
-    roundTitle.textContent = 'ROUND LOST';
-    roundSubtitle.textContent = 'OPPONENT SCORED';
+    roundKicker.textContent = `Round ${roundNum}`;
+    roundTitle.textContent = 'You lost the round';
+    roundSubtitle.textContent = '';
     playRoundLoseSound();
-    roundParticles.innerHTML = '';
   }
+  roundParticles.innerHTML = '';
 
   // Label configuration
   if (mySlot === 1) {
@@ -234,16 +205,10 @@ function showRoundResultOverlay(
   });
 
   // Action status banner
-  const isMatchPoint = newScores[winningSlot - 1] >= ROUNDS_TO_WIN;
-  if (isWinner) {
-    roundStatusBanner.textContent = isMatchPoint
-      ? 'MATCH VICTORY SECURED!'
-      : `1 MORE POINT TO WIN — ROUND ${roundNum + 1} UP NEXT`;
-  } else {
-    roundStatusBanner.textContent = isMatchPoint
-      ? 'MATCH DECIDED'
-      : `RESET YOUR STANCE — ROUND ${roundNum + 1} UP NEXT`;
-  }
+  const toWin = ROUNDS_TO_WIN - newScores[winningSlot - 1];
+  roundStatusBanner.textContent = isWinner && toWin === 1
+    ? 'One more round to win the match!'
+    : `Round ${roundNum + 1} next`;
 
   // Stage 2: Animate point award, pip fill, and score counter tick
   const timer = setTimeout(() => {
@@ -442,6 +407,18 @@ function handleMessage(msg: ServerToPlayerMsg): void {
       }
       break;
     }
+
+    case 'replaced':
+      handleGameState('lobby');
+      qrCanvas.style.visibility = 'hidden';
+      lobbyStatus.textContent = 'Nailong Battle! is open in another tab';
+      controllerStatus.textContent = 'Use that tab, or reload this one to play here.';
+      break;
+
+    case 'gameFull':
+      lobbyStatus.textContent = 'Game is full: 2 laptops are already connected';
+      controllerStatus.textContent = 'Close the extra game tab on another laptop. Retrying...';
+      break;
 
     case 'waitingForOpponent':
       opponentStatus.textContent = 'Waiting for another player to join...';
