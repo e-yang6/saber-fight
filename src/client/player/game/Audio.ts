@@ -316,6 +316,20 @@ export function playBlink(): void {
   air.stop(now + 0.35);
 }
 
+/** Ring-out sky beam: a laser zap slamming down, thunder crack, deep boom and a shimmering tail */
+export function playSkyBeam(): void {
+  const c = getCtx();
+  const now = c.currentTime;
+  tone(c, 'sawtooth', 2600, 140, 0.18, 0.16);
+  tone(c, 'square', 1800, 90, 0.08, 0.2);
+  noise(c, 'highpass', 1800, 0.7, 0.7, 0.12, now + 0.08);
+  tone(c, 'sine', 95, 28, 1.0, 1.1, now + 0.08);
+  noise(c, 'lowpass', 260, 0.7, 0.5, 1.6, now + 0.1);
+  for (const [f, a] of [[1320, 0.06], [1980, 0.04], [2640, 0.03]] as const) {
+    tone(c, 'sine', f, f * 1.01, a, 1.4, now + 0.12);
+  }
+}
+
 /** Splash sound for falling into water */
 export function playSplash(): void {
   const c = getCtx();

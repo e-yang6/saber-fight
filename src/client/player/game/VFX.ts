@@ -377,6 +377,77 @@ export class VFX {
     }
   }
 
+  /**
+   * Ring-out finisher: a pillar of light slams down from the sky onto the water where the
+   * loser landed, with an impact flash and shock rings. Tall enough to see while looking ahead.
+   */
+  spawnSkyBeam(position: THREE.Vector3, color: THREE.ColorRepresentation): void {
+    const BEAM_HEIGHT = 140;
+    const STRIKE = 0.1;
+    const HOLD = 0.25;
+    const FADE = 1.0;
+    const base = new THREE.Vector3(position.x, WATER_LEVEL, position.z);
+
+    // Unit-height cylinders with their origin at the top, so scaling Y grows them downward
+    const makeColumn = (radius: number, mat: THREE.MeshBasicMaterial): THREE.Mesh => {
+      const geo = new THREE.CylinderGeometry(radius, radius, 1, 16, 1, true);
+      geo.translate(0, -0.5, 0);
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(base.x, base.y + BEAM_HEIGHT, base.z);
+      mesh.scale.y = 0.001;
+      mesh.renderOrder = 60;
+      mesh.frustumCulled = false;
+      this.scene.add(mesh);
+      return mesh;
+    };
+    const additive = { transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide };
+    const coreMat = new THREE.MeshBasicMaterial({ ...additive, color: 0xffffff, opacity: 1 });
+    const glowMat = new THREE.MeshBasicMaterial({ ...additive, color, opacity: 0.55 });
+    const core = makeColumn(0.35, coreMat);
+    const glow = makeColumn(1.4, glowMat);
+
+    const start = performance.now();
+    let impacted = false;
+    const animate = () => {
+      const t = (performance.now() - start) / 1000;
+      if (t < STRIKE) {
+        const k = t / STRIKE;
+        core.scale.y = glow.scale.y = BEAM_HEIGHT * k * k;
+      } else {
+        core.scale.y = glow.scale.y = BEAM_HEIGHT;
+        if (!impacted) {
+          impacted = true;
+          this.expandAndFade(new THREE.SphereGeometry(1, 20, 14), 0xffffff, base, 0.35, 1, 5, 0.9);
+          this.expandAndFade(new THREE.RingGeometry(0.85, 1, 48), new THREE.Color(color).getHex(), base, 0.9, 1, 16, 0.9, 0,
+            (m) => { m.rotation.x = -Math.PI / 2; m.position.y += 0.05; });
+          this.expandAndFade(new THREE.RingGeometry(0.9, 1, 48), 0xffffff, base, 0.6, 1, 9, 0.7, 0.08,
+            (m) => { m.rotation.x = -Math.PI / 2; m.position.y += 0.06; });
+          this.spawnSplash(base);
+          this.triggerScreenShake(1.6);
+        }
+        const fadeT = Math.max(0, (t - STRIKE - HOLD) / FADE);
+        if (fadeT >= 1) {
+          for (const m of [core, glow]) {
+            this.scene.remove(m);
+            m.geometry.dispose();
+          }
+          coreMat.dispose();
+          glowMat.dispose();
+          return;
+        }
+        // Thin out and fade, with a little crackle while it's at full strength
+        const flicker = fadeT === 0 ? 0.85 + Math.random() * 0.15 : 1;
+        const thin = 1 - fadeT * 0.8;
+        core.scale.x = core.scale.z = thin * flicker;
+        glow.scale.x = glow.scale.z = thin * (1 + Math.sin(t * 40) * 0.08);
+        coreMat.opacity = (1 - fadeT) * flicker;
+        glowMat.opacity = 0.55 * (1 - fadeT);
+      }
+      requestAnimationFrame(animate);
+    };
+    requestAnimationFrame(animate);
+  }
+
   /** Additive mesh that scales up and fades out, then removes itself */
   private expandAndFade(
     geo: THREE.BufferGeometry, color: number, position: THREE.Vector3,

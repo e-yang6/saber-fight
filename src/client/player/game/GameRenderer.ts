@@ -63,6 +63,9 @@ export class GameRenderer {
   private lastSwooshAt = new Map<PlayerSlot, number>();
   /** Camera recoil in meters along the view axis (positive = pushed back) */
   private camKick = 0;
+  /** Opponent knocked off: keep looking straight ahead (frozen heading) instead of tracking their fall */
+  private oppOffPlatform = false;
+  private frozenLookDir = new THREE.Vector3(0, 0, 1);
 
   private mySaberWorldQ = new THREE.Quaternion();
   private myBlocking = false;
@@ -199,6 +202,13 @@ export class GameRenderer {
     const oppPos = oppFighterData.position;
     this.targetMyPos.set(myPos[0], myPos[1], myPos[2]);
     this.targetOppPos.set(oppPos[0], oppPos[1], oppPos[2]);
+    const oppOff = !oppFighterData.onPlatform || oppFighterData.fallen;
+    if (oppOff && !this.oppOffPlatform) {
+      this.frozenLookDir.set(oppPos[0] - myPos[0], 0, oppPos[2] - myPos[2]);
+      if (this.frozenLookDir.lengthSq() < 1e-6) this.frozenLookDir.set(0, 0, this.mySlot === 1 ? 1 : -1);
+      this.frozenLookDir.normalize();
+    }
+    this.oppOffPlatform = oppOff;
     if (!this.hasSnapshot) {
       this.hasSnapshot = true;
       this.lastMyPos.copy(this.targetMyPos);
@@ -309,9 +319,15 @@ export class GameRenderer {
       }
       case 'fall': {
         const f = this.fighters.get(event.slot);
+        const winner = this.fighters.get(event.slot === 1 ? 2 : 1);
         if (f) {
-          this.vfx.spawnSplash(f.group.position);
+          // Beam in the winner's saber colour (the splash comes with it)
+          const color = winner
+            ? (winner.saber.bladeGlow.material as THREE.MeshBasicMaterial).color.clone()
+            : new THREE.Color(0xffe680);
+          this.vfx.spawnSkyBeam(f.group.position, color);
           Audio.playSplash();
+          Audio.playSkyBeam();
         }
         break;
       }
@@ -476,7 +492,11 @@ export class GameRenderer {
 
       baseEye.add(this.headOffset);
       this.camera.position.copy(baseEye);
-      this.camera.lookAt(oppHead.x, oppHead.y, oppHead.z);
+      if (this.oppOffPlatform) {
+        this.camera.lookAt(baseEye.clone().addScaledVector(this.frozenLookDir, 10));
+      } else {
+        this.camera.lookAt(oppHead.x, oppHead.y, oppHead.z);
+      }
 
       this.camera.fov = BASE_FOV + this.fovKick;
 
