@@ -164,6 +164,7 @@ class ServerFighter {
       blocking: this.blocking,
       stunned: this.stunned,
       abilityActive: this.abilityActive,
+      cooldownRemaining: Math.max(0, (this.cooldownEnd - performance.now()) / 1000),
       className: this.className,
       saberColor: this.saberColor,
       bladeScale: this.bladeScale,

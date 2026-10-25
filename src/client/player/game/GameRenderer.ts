@@ -83,6 +83,10 @@ export class GameRenderer {
   private comboEl = document.getElementById('combo');
   private comboCountEl = document.getElementById('combo-count');
   private combo = 0;
+  private powerEl = document.getElementById('power');
+  private powerRingEl = document.getElementById('power-ring');
+  private powerTimeEl = document.getElementById('power-time');
+  private powerNameEl = document.getElementById('power-name');
 
   constructor(canvas: HTMLCanvasElement, mySlot: PlayerSlot) {
     this.mySlot = mySlot;
@@ -200,6 +204,7 @@ export class GameRenderer {
     this.fpSaber.setOvercharged(myFighterData.abilityActive && myFighterData.className === 'striker');
     this.fpSaber.setStunned(myFighterData.stunned);
     this.myBlocking = myFighterData.blocking;
+    this.updatePowerMeter(myFighterData, snap.state !== 'lobby' && snap.state !== 'classSelect');
     const sq = myFighterData.saberQ;
     this.targetSaberWorldQ.set(sq[0], sq[1], sq[2], sq[3]);
 
@@ -258,6 +263,19 @@ export class GameRenderer {
     for (const event of snap.events) {
       this.handleEvent(event);
     }
+  }
+
+  private updatePowerMeter(me: FighterSnapshot, inMatch: boolean): void {
+    if (!this.powerEl || !this.powerRingEl || !this.powerTimeEl || !this.powerNameEl) return;
+    this.powerEl.classList.toggle('show', inMatch);
+    if (!inMatch) return;
+    const ability = CLASS_CONFIGS[me.className].ability;
+    const ready = me.cooldownRemaining <= 0;
+    const progress = ready ? 1 : 1 - me.cooldownRemaining / ability.cooldown;
+    this.powerEl.classList.toggle('ready', ready);
+    this.powerRingEl.style.setProperty('--p', progress.toFixed(3));
+    this.powerTimeEl.textContent = ready ? 'READY' : String(Math.ceil(me.cooldownRemaining));
+    this.powerNameEl.textContent = ability.name;
   }
 
   /** One swoosh per swing (rising edge with hysteresis), not one per snapshot */

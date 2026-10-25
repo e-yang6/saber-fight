@@ -206,6 +206,8 @@ export interface FighterSnapshot {
   blocking: boolean;
   stunned: boolean;
   abilityActive: boolean;
+  /** Seconds until the power can be used again (0 = ready) */
+  cooldownRemaining: number;
   className: ClassName;
   saberColor: SaberColor;
   bladeScale: number;
