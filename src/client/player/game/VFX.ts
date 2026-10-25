@@ -186,10 +186,10 @@ export class VFX {
     this.flashMesh.renderOrder = 999;
     this.flashMesh.frustumCulled = false;
 
-    // Pre-allocate comic hit marker billboard meshes (2.2m size for big, clear visual feedback)
+    // Pre-allocate comic hit marker billboard meshes (1.1m size - 50% smaller, translucent, zero sparks)
     const hitTexture = createComicStarburstTexture();
-    const hitGeo = new THREE.PlaneGeometry(2.2, 2.2);
-    const ringGeo = new THREE.RingGeometry(0.3, 0.55, 32);
+    const hitGeo = new THREE.PlaneGeometry(1.1, 1.1);
+    const ringGeo = new THREE.RingGeometry(0.15, 0.28, 32);
 
     for (let i = 0; i < 6; i++) {
       const mat = new THREE.MeshBasicMaterial({
@@ -218,7 +218,7 @@ export class VFX {
       scene.add(ring);
 
       this.hitMarkerPool.push({
-        mesh, mat, ring, ringMat, life: 0, maxLife: 0.28, baseScale: 2.0,
+        mesh, mat, ring, ringMat, life: 0, maxLife: 0.26, baseScale: 1.0,
       });
     }
   }
@@ -247,32 +247,33 @@ export class VFX {
     requestAnimationFrame(animate);
   }
 
-  /** Sparks at blade clash point */
-  spawnClashSparks(position: THREE.Vector3, count = 30): void {
-    for (let i = 0; i < count; i++) {
-      const mesh = this.getPooledSpark();
-      if (!mesh) break;
-      mesh.position.copy(position);
-      mesh.visible = true;
-      mesh.scale.setScalar(1 + Math.random());
-      (mesh.material as THREE.MeshBasicMaterial).color.set(
-        Math.random() > 0.3 ? 0xffaa44 : 0xffffcc
-      );
-      const vel = new THREE.Vector3(
-        (Math.random() - 0.5) * 12,
-        Math.random() * 8,
-        (Math.random() - 0.5) * 12,
-      );
-      this.particles.push({ mesh, velocity: vel, life: 0.4 + Math.random() * 0.3, maxLife: 0.6 });
-    }
+  /** Blade clash effect — clean, spark-free luminous burst for lightsaber collisions */
+  spawnClashFlash(position: THREE.Vector3): void {
+    const geo = new THREE.SphereGeometry(0.35, 8, 8);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0xffe066,
+      transparent: true,
+      opacity: 0.55,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(position);
+    this.scene.add(mesh);
+    this.particles.push({ mesh, velocity: new THREE.Vector3(), life: 0.12, maxLife: 0.12 });
   }
 
-  /** Big, vibrant comic starburst hit marker on top of where the fighter was struck (no sparks) */
+  /** Sparks completely removed for lightsaber hits/clashes to optimize performance */
+  spawnClashSparks(_position: THREE.Vector3, _count = 30): void {
+    // Sparks removed entirely for maximum performance optimization
+  }
+
+  /** Translucent, 50% smaller comic starburst hit marker on contact point (no sparks) */
   spawnHitFlash(position: THREE.Vector3): void {
     this.spawnComicHitMarker(position);
   }
 
-  /** Spawn a single comic starburst hit marker on the contact point */
+  /** Spawn a single translucent comic starburst hit marker on the contact point */
   spawnComicHitMarker(position: THREE.Vector3): void {
     // Find available pooled hit marker or recycle oldest active
     let marker: ComicHitMarker | undefined = this.hitMarkerPool.find(m => !m.mesh.visible);
@@ -289,17 +290,18 @@ export class VFX {
     }
     marker.mesh.scale.setScalar(0.4 * marker.baseScale);
     marker.ring.scale.setScalar(0.4 * marker.baseScale);
-    marker.mat.opacity = 1;
-    marker.ringMat.opacity = 0.8;
+    // Translucent opacity
+    marker.mat.opacity = 0.48;
+    marker.ringMat.opacity = 0.40;
     marker.mesh.visible = true;
     marker.ring.visible = true;
-    marker.life = 0.28;
-    marker.maxLife = 0.28;
+    marker.life = 0.26;
+    marker.maxLife = 0.26;
 
     this.activeHitMarkers.push(marker);
 
-    // Screen flash (clean red impact flash, no sparks)
-    this.screenFlash(0xff3333, 0.25, 0.15);
+    // Screen flash (clean subtle red impact flash, no sparks)
+    this.screenFlash(0xff3333, 0.2, 0.12);
   }
 
   /** Block shield flash — bright colored burst at block point */
@@ -552,17 +554,18 @@ export class VFX {
       }
       hm.mesh.scale.setScalar(scale);
 
-      // Opacity: stay solid until 65%, then rapid fade out
+      // Opacity: translucent (0.48) until 65%, then rapid fade out
+      const maxOpacity = 0.48;
       if (progress < 0.65) {
-        hm.mat.opacity = 1;
+        hm.mat.opacity = maxOpacity;
       } else {
-        hm.mat.opacity = Math.max(0, 1 - (progress - 0.65) / 0.35);
+        hm.mat.opacity = Math.max(0, maxOpacity * (1 - (progress - 0.65) / 0.35));
       }
 
       // Expanding comic shock ring
       const ringScale = (0.4 + progress * 2.8) * hm.baseScale;
       hm.ring.scale.setScalar(ringScale);
-      hm.ringMat.opacity = Math.max(0, 0.85 * (1 - progress));
+      hm.ringMat.opacity = Math.max(0, 0.40 * (1 - progress));
     }
 
     // ─── Update Existing Particles ────────────────────────────────────

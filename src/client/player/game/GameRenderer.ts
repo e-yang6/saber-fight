@@ -218,7 +218,7 @@ export class GameRenderer {
     switch (event.kind) {
       case 'clash': {
         const p = new THREE.Vector3(...event.point);
-        this.vfx.spawnClashSparks(p, 35);
+        this.vfx.spawnClashFlash(p);
         this.vfx.triggerScreenShake(1.2);
         this.vfx.screenFlash(0xffaa44, 0.2, 0.1);
         Audio.playClash();
@@ -234,7 +234,6 @@ export class GameRenderer {
       case 'block': {
         const p = new THREE.Vector3(...event.point);
         this.vfx.spawnBlockFlash(p);
-        this.vfx.spawnClashSparks(p, 15);
         this.vfx.triggerScreenShake(0.6);
         Audio.playBlock();
         break;
