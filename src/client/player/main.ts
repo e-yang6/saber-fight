@@ -106,7 +106,8 @@ function showOverlay(title: string, subtitle: string, showBtn = false, isCountdo
   overlayBtn.style.display = showBtn ? 'inline-block' : 'none';
 }
 
-function showMatchEndOverlay(isWinner: boolean, scores: [number, number]): void {
+/** `showBtn` stays false until the server is in matchEnd; before that a rematch click is ignored */
+function showMatchEndOverlay(isWinner: boolean, scores: [number, number], showBtn: boolean): void {
   overlay.style.display = 'flex';
   overlay.classList.remove('countdown-mode');
 
@@ -130,7 +131,7 @@ function showMatchEndOverlay(isWinner: boolean, scores: [number, number]): void 
 
   overlayScore.textContent = `Match Score: ${scores[0]} - ${scores[1]}`;
   overlayScore.style.display = 'block';
-  overlayBtn.style.display = 'inline-block';
+  overlayBtn.style.display = showBtn ? 'inline-block' : 'none';
 }
 
 function hideOverlay(): void {
@@ -297,7 +298,7 @@ function handleMessage(msg: ServerToPlayerMsg): void {
         resultTimer = null;
         if (matchOver) {
           renderer?.setMatchEnd(isWinner, latestScores);
-          showMatchEndOverlay(isWinner, latestScores);
+          showMatchEndOverlay(isWinner, latestScores, false);
         } else {
           showOverlay(isWinner ? 'You win the round!' : 'You lose the round!', score);
         }
@@ -310,7 +311,7 @@ function handleMessage(msg: ServerToPlayerMsg): void {
       if (resultTimer) clearTimeout(resultTimer);
       resultTimer = null;
       renderer?.setMatchEnd(isWinner, latestScores);
-      showMatchEndOverlay(isWinner, latestScores);
+      showMatchEndOverlay(isWinner, latestScores, true);
       break;
     }
   }

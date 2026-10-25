@@ -211,7 +211,7 @@ export class GameRenderer {
     this.fpSaber.setOvercharged(myFighterData.abilityActive && myFighterData.className === 'striker');
     this.fpSaber.setStunned(myFighterData.stunned);
     this.myBlocking = myFighterData.blocking;
-    this.updatePowerMeter(myFighterData, snap.state !== 'lobby' && snap.state !== 'classSelect');
+    this.updatePowerMeter(myFighterData, snap.state === 'countdown' || snap.state === 'fighting' || snap.state === 'roundEnd');
     const sq = myFighterData.saberQ;
     this.targetSaberWorldQ.set(sq[0], sq[1], sq[2], sq[3]);
 
@@ -254,7 +254,8 @@ export class GameRenderer {
       this.countdownStartTime = 0;
     }
 
-    if (snap.state !== 'matchEnd' && this.matchEndMode !== 'none') {
+    // The showcase starts during the deciding roundEnd (after the sky beam), so only a new round/lobby clears it
+    if (snap.state !== 'matchEnd' && snap.state !== 'roundEnd' && this.matchEndMode !== 'none') {
       this.clearMatchEnd();
     }
 
