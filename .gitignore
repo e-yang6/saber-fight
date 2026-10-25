@@ -5,4 +5,5 @@ dist/
 .env
 bun.lock
 .aistudio/
-
+*.patch
+*.bundle
