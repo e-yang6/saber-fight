@@ -156,7 +156,7 @@ src/
     │       ├── Fighter.ts      # Render-only character (snapshot interpolation)
     │       ├── Saber.ts        # Saber with glow, bloom, motion trail
     │       ├── VFX.ts          # Particles, sparks, hit flashes, screen shake
-    │       └── Audio.ts        # Procedural Web Audio (hum, clash, hit, swoosh)
+    │       └── Audio.ts        # Web Audio: sample SFX from public/sfx, synth hum + fallbacks
     └── controller/
         ├── index.html      # Phone controller page
         ├── styles.css
@@ -172,8 +172,10 @@ src/
 - **Client:** Vite + Three.js (vanilla TypeScript, no framework)
 - **3D:** Three.js with UnrealBloomPass for saber glow
 - **Head tracking:** MediaPipe Face Landmarker (optional, feature-flagged)
-- **Assets** — characters, the SF skyline, and all audio are procedural; the only external asset is the Golden Gate Bridge model below
+- **Assets** — characters, the SF skyline, and the saber hum are procedural; external assets are the Golden Gate Bridge model and the CC0 sound effects below
 
 ## Credits
 
+- Sound effects (`src/client/public/sfx/`): CC0 packs from [Kenney](https://kenney.nl) and [OpenGameArt](https://opengameart.org); per-file sources in `src/client/public/sfx/CREDITS.txt`
+- Smash impact: "Designed Mecha - Elements - Impact 01" from [Free Cinematic Sound Effects](https://opengameart.org/content/free-cinematic-sound-effects) by Gregor Quendel, licensed [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/)
 - [Golden Gate bridge](https://poly.pizza/m/a648BwpXx-A) by Steren Giannini, licensed [CC-BY 3.0](https://creativecommons.org/licenses/by/3.0/), via Poly Pizza (`src/client/public/models/golden-gate.glb`; its built-in water slab is hidden at load)

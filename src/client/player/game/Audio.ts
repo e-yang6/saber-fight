@@ -1,13 +1,61 @@
 /**
- * Procedural audio using Web Audio API.
- * No audio files — everything is synthesized.
+ * Game audio using the Web Audio API.
+ * One-shot effects play samples from /sfx (see public/sfx/CREDITS.txt); each falls back
+ * to its procedural synth version until its file has loaded or if loading fails.
+ * The saber hum is always synthesized.
  */
 
 let ctx: AudioContext | null = null;
 let masterGain: GainNode;
+let sampleBus: GainNode;
 
 // Persistent saber hum oscillators per player
 const hums: Map<number, { osc: OscillatorNode; gain: GainNode }> = new Map();
+
+/** Samples are peak-normalized to -1 dBFS; this brings them level with the synth sounds */
+const SAMPLE_BUS_GAIN = 1.5;
+
+const SAMPLES = {
+  swoosh: ['swoosh-1.wav', 'swoosh-2.wav', 'swoosh-3.wav', 'swoosh-4.wav', 'swoosh-5.wav', 'swoosh-6.wav'],
+  clashBody: ['clash-body-1.wav', 'clash-body-2.wav'],
+  clashCrack: ['clash-crack-1.wav', 'clash-crack-2.wav'],
+  hit: ['hit-1.wav', 'hit-2.wav', 'hit-3.wav'],
+  smashImpact: ['smash-impact.wav'],
+  smashBoom: ['smash-boom.wav'],
+  countdownTick: ['countdown-tick.wav'],
+  countdownGo: ['countdown-go.wav'],
+  announcerFight: ['announcer-fight.wav'],
+  block: ['block-1.wav', 'block-2.wav'],
+  shockwave: ['shockwave.wav'],
+  overcharge: ['overcharge.wav'],
+  barrier: ['barrier.wav'],
+  blink: ['blink.wav'],
+  skyBeamLaser: ['skybeam-laser.wav'],
+  skyBeamCrunch: ['skybeam-crunch.wav'],
+  splash: ['splash.wav'],
+  victory: ['victory.mp3'],
+  defeat: ['defeat.mp3'],
+  blueSmashVoice: ['blue-smash-1.wav', 'blue-smash-2.wav', 'blue-smash-3.wav'],
+  blueWinVoice: ['blue-win.wav'],
+  blueLossVoice: ['blue-loss.wav'],
+  yellowSmashVoice: ['yellow-smash-1.wav', 'yellow-smash-2.wav', 'yellow-smash-3.wav'],
+  yellowWinVoice: ['yellow-win.wav'],
+  yellowLossVoice: ['yellow-loss.wav'],
+} as const;
+
+/** Voice lines per player slot for landing a smash */
+const SMASH_VOICE: Partial<Record<number, SampleKey>> = { 1: 'yellowSmashVoice', 2: 'blueSmashVoice' };
+/** Voice lines per player slot for winning the whole match */
+const WIN_VOICE: Partial<Record<number, SampleKey>> = { 1: 'yellowWinVoice', 2: 'blueWinVoice' };
+/** Voice lines per player slot for losing the whole match */
+const LOSS_VOICE: Partial<Record<number, SampleKey>> = { 1: 'yellowLossVoice', 2: 'blueLossVoice' };
+
+type SampleKey = keyof typeof SAMPLES;
+
+const buffers: Map<string, AudioBuffer> = new Map();
+let jingle: AudioBufferSourceNode | null = null;
+let voice: AudioBufferSourceNode | null = null;
+let endVoices: AudioBufferSourceNode[] = [];
 
 function getCtx(): AudioContext {
   if (!ctx) {
@@ -15,9 +63,47 @@ function getCtx(): AudioContext {
     masterGain = ctx.createGain();
     masterGain.gain.value = 0.3;
     masterGain.connect(ctx.destination);
+    sampleBus = ctx.createGain();
+    sampleBus.gain.value = SAMPLE_BUS_GAIN;
+    sampleBus.connect(masterGain);
+    loadSamples(ctx);
   }
   if (ctx.state === 'suspended') ctx.resume();
   return ctx;
+}
+
+function loadSamples(c: AudioContext): void {
+  for (const file of new Set(Object.values(SAMPLES).flat())) {
+    fetch(`/sfx/${file}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`${res.status} ${file}`);
+        return res.arrayBuffer();
+      })
+      .then((data) => c.decodeAudioData(data))
+      .then((buffer) => buffers.set(file, buffer))
+      .catch((err) => console.warn('[audio] sample unavailable, using synth fallback:', err));
+  }
+}
+
+/** Play a random loaded variant of `key`. Returns null if none are loaded yet. */
+function sample(key: SampleKey, volume = 1, rate = 1, at = getCtx().currentTime): AudioBufferSourceNode | null {
+  const loaded = SAMPLES[key].filter((f) => buffers.has(f));
+  if (loaded.length === 0) return null;
+  const c = getCtx();
+  const src = c.createBufferSource();
+  src.buffer = buffers.get(loaded[Math.floor(Math.random() * loaded.length)])!;
+  src.playbackRate.value = rate;
+  const gain = c.createGain();
+  gain.gain.value = volume;
+  src.connect(gain);
+  gain.connect(sampleBus);
+  src.start(at);
+  return src;
+}
+
+/** Small random pitch spread so repeated sounds don't feel identical */
+function vary(spread = 0.06): number {
+  return 1 + (Math.random() * 2 - 1) * spread;
 }
 
 export function initAudio(): void {
@@ -63,6 +149,126 @@ export function updateHum(slot: number, tipSpeed: number): void {
   hum.gain.gain.setTargetAtTime(0.05 + Math.min(tipSpeed * 0.01, 0.1), t, 0.03);
 }
 
+/** One swoosh per swing, louder and brighter when faster */
+export function playSwoosh(speed: number): void {
+  const k = Math.min(1, speed / 14);
+  if (!sample('swoosh', 0.45 + k * 0.55, (0.9 + k * 0.25) * vary(0.04))) synthSwoosh(speed);
+}
+
+/** Blade-on-blade: metallic body plus a sharp crack */
+export function playClash(): void {
+  if (!sample('clashBody', 1, vary())) return synthClash();
+  sample('clashCrack', 0.8, vary());
+}
+
+/** Saber connects with a body. `intensity` 0..1 scales it; a smash adds a cinematic impact and explosion. */
+export function playHit(intensity = 0.5, smash = false): void {
+  const k = 0.4 + Math.min(1, Math.max(0, intensity)) * 0.6;
+  if (!sample('hit', k, vary())) return synthHit(intensity, smash);
+  if (smash) {
+    sample('smashImpact', 1);
+    sample('smashBoom', 0.9);
+  }
+}
+
+/** One beep per countdown number */
+export function playCountdownTick(): void {
+  if (!sample('countdownTick', 0.8)) tone(getCtx(), 'sine', 880, 880, 0.35, 0.25);
+}
+
+/** Round start: higher "go" beep plus the announcer's "Fight!" */
+export function playFight(): void {
+  if (!sample('countdownGo', 0.8)) tone(getCtx(), 'sine', 1320, 1320, 0.4, 0.6);
+  sample('announcerFight', 1);
+}
+
+/** Random taunt from the attacker after a smash; skipped if a line is still playing so they never overlap */
+export function playSmashVoice(attacker: number): void {
+  const key = SMASH_VOICE[attacker];
+  if (!key || voice) return;
+  playVoice(key, 0.15);
+}
+
+function playVoice(key: SampleKey, delay: number): void {
+  const src = sample(key, 1, 1, getCtx().currentTime + delay);
+  voice = src;
+  if (src) src.onended = () => { if (voice === src) voice = null; };
+}
+
+/** Successful parry */
+export function playBlock(): void {
+  if (!sample('block', 0.9, vary(0.04))) synthBlock();
+}
+
+/** Shockwave (Guardian) */
+export function playShockwave(): void {
+  if (!sample('shockwave', 1)) synthShockwave();
+}
+
+/** Overcharge (Striker) */
+export function playOvercharge(): void {
+  if (!sample('overcharge', 0.7)) synthOvercharge();
+}
+
+/** Barrier (Mystic) */
+export function playBarrier(): void {
+  if (!sample('barrier', 0.8)) synthBarrier();
+}
+
+/** Blink (Phantom) */
+export function playBlink(): void {
+  if (!sample('blink', 0.7)) synthBlink();
+}
+
+/** Ring-out sky beam: laser slamming down followed by an explosion crunch */
+export function playSkyBeam(): void {
+  if (!sample('skyBeamLaser', 0.8)) return synthSkyBeam();
+  sample('skyBeamCrunch', 1, 1, getCtx().currentTime + 0.08);
+}
+
+/** Falling into the water */
+export function playSplash(): void {
+  if (!sample('splash', 0.9)) synthSplash();
+}
+
+export function playVictoryFanfare(): void {
+  playJingle('victory', synthVictoryFanfare);
+}
+
+export function playDefeatSound(): void {
+  playJingle('defeat', synthDefeatSound);
+}
+
+/** Winner's victory line, then the loser's reply once it finishes. Cuts off any smash line still playing. */
+export function playMatchEndVoices(winner: number, loser: number): void {
+  voice?.stop();
+  voice = null;
+  let at = getCtx().currentTime + 0.4;
+  for (const key of [WIN_VOICE[winner], LOSS_VOICE[loser]]) {
+    if (!key) continue;
+    const src = sample(key, 1, 1, at);
+    if (!src) continue;
+    endVoices.push(src);
+    at += src.buffer!.duration + 0.3;
+  }
+}
+
+/** Cut off the end-of-match music and voice lines (e.g. on rematch) */
+export function stopJingle(): void {
+  jingle?.stop();
+  jingle = null;
+  voice?.stop();
+  voice = null;
+  for (const src of endVoices) src.stop();
+  endVoices = [];
+}
+
+function playJingle(key: 'victory' | 'defeat', fallback: () => void): void {
+  stopJingle();
+  jingle = sample(key, 0.8);
+  if (!jingle) fallback();
+}
+
 /** One-shot oscillator with an exponential decay envelope */
 function tone(
   c: AudioContext, type: OscillatorType, f0: number, f1: number,
@@ -104,7 +310,7 @@ function noise(
 }
 
 /** One "vwoom" per swing: noise swept through a bandpass, louder and brighter when faster */
-export function playSwoosh(speed: number): void {
+function synthSwoosh(speed: number): void {
   const c = getCtx();
   const now = c.currentTime;
   const k = Math.min(1, speed / 14);
@@ -133,7 +339,7 @@ export function playSwoosh(speed: number): void {
 }
 
 /** Blade-on-blade: crack plus a ringing inharmonic metallic chord */
-export function playClash(): void {
+function synthClash(): void {
   const c = getCtx();
   noise(c, 'highpass', 2500, 0.7, 0.45, 0.08);
   for (const [f, a] of [[1230, 0.16], [1847, 0.12], [2961, 0.08], [620, 0.14]] as const) {
@@ -144,7 +350,7 @@ export function playClash(): void {
 }
 
 /** Saber connects with a body: sub punch + sizzle + crack. `intensity` 0..1 scales it all. */
-export function playHit(intensity = 0.5, smash = false): void {
+function synthHit(intensity = 0.5, smash = false): void {
   const c = getCtx();
   const k = 0.4 + Math.min(1, Math.max(0, intensity)) * 0.6;
   tone(c, 'sine', 160, 38, 0.9 * k, 0.32);
@@ -160,7 +366,7 @@ export function playHit(intensity = 0.5, smash = false): void {
 }
 
 /** Successful parry: bright ring + deep clunk so it reads as "denied" */
-export function playBlock(): void {
+function synthBlock(): void {
   const c = getCtx();
   tone(c, 'sine', 160, 70, 0.5, 0.18);
   noise(c, 'highpass', 3000, 0.7, 0.3, 0.06);
@@ -177,7 +383,7 @@ function noiseBuffer(c: AudioContext, seconds: number): AudioBuffer {
 }
 
 /** Shockwave (Guardian) — deep sub-bass boom with a rumbling noise tail */
-export function playShockwave(): void {
+function synthShockwave(): void {
   const c = getCtx();
   const now = c.currentTime;
 
@@ -210,7 +416,7 @@ export function playShockwave(): void {
 }
 
 /** Overcharge (Striker) — rising detuned sawtooth power-up with electric crackle */
-export function playOvercharge(): void {
+function synthOvercharge(): void {
   const c = getCtx();
   const now = c.currentTime;
 
@@ -251,7 +457,7 @@ export function playOvercharge(): void {
 }
 
 /** Barrier (Mystic) — shimmering bell chord with tremolo */
-export function playBarrier(): void {
+function synthBarrier(): void {
   const c = getCtx();
   const now = c.currentTime;
 
@@ -285,7 +491,7 @@ export function playBarrier(): void {
 }
 
 /** Blink (Phantom) — fast downward zip plus an airy whoosh */
-export function playBlink(): void {
+function synthBlink(): void {
   const c = getCtx();
   const now = c.currentTime;
 
@@ -323,7 +529,7 @@ export function playBlink(): void {
 }
 
 /** Ring-out sky beam: a laser zap slamming down, thunder crack, deep boom and a shimmering tail */
-export function playSkyBeam(): void {
+function synthSkyBeam(): void {
   const c = getCtx();
   const now = c.currentTime;
   tone(c, 'sawtooth', 2600, 140, 0.18, 0.16);
@@ -337,7 +543,7 @@ export function playSkyBeam(): void {
 }
 
 /** Splash sound for falling into water */
-export function playSplash(): void {
+function synthSplash(): void {
   const c = getCtx();
   const now = c.currentTime;
 
@@ -368,7 +574,7 @@ export function playSplash(): void {
 }
 
 /** Triumphant victory fanfare with brass harmonics and shimmer */
-export function playVictoryFanfare(): void {
+function synthVictoryFanfare(): void {
   const c = getCtx();
   const now = c.currentTime;
 
@@ -415,7 +621,7 @@ export function playVictoryFanfare(): void {
 }
 
 /** Melancholy dejected defeat synth sound */
-export function playDefeatSound(): void {
+function synthDefeatSound(): void {
   const c = getCtx();
   const now = c.currentTime;
 

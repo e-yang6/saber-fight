@@ -1,0 +1,29 @@
+All sounds in this folder are CC0 (public domain) except smash-impact.wav, which is CC-BY 4.0 (credit required, below).
+Files were trimmed/peak-normalized and converted (mono WAV for effects, MP3 for jingles).
+
+CC-BY 4.0
+  smash-impact    "Designed Mecha - Elements - Impact 01" from "Free Cinematic Sound Effects" by Gregor Quendel
+                  https://opengameart.org/content/free-cinematic-sound-effects
+                  License: https://creativecommons.org/licenses/by/4.0/
+
+Kenney (kenney.nl), CC0
+  Sci-fi Sounds   https://kenney.nl/assets/sci-fi-sounds
+    clash-body-1/2 (impactMetal_000/003),
+    shockwave (lowFrequency_explosion_000), barrier (forceField_000),
+    skybeam-laser (laserLarge_000), skybeam-crunch (explosionCrunch_000)
+  Impact Sounds   https://kenney.nl/assets/impact-sounds
+    clash-crack-1/2 (impactMetal_heavy_001/003), hit-1/2/3 (impactPunch_heavy_000/001/004),
+    block-1/2 (impactPlate_heavy_000/002)
+  Digital Audio   https://kenney.nl/assets/digital-audio
+    overcharge (zapThreeToneUp), blink (phaseJump1)
+  Voiceover Pack: Fighter   https://kenney.nl/assets/voiceover-pack-fighter
+    announcer-fight (fight)
+
+OpenGameArt.org, CC0
+  swoosh-1..6     "Swishes Sound Pack" (swish-3/4/5/6/7/9)   https://opengameart.org/content/swishes-sound-pack
+  splash          "40 CC0 water / splash / slime SFX" (splash_04)   https://opengameart.org/content/40-cc0-water-splash-slime-sfx
+  victory         "Victory Fanfare Short" by cynicmusic   https://opengameart.org/content/victory-fanfare-short
+  defeat          "Lose Game Short Music Clip"   https://opengameart.org/content/lose-game-short-music-clip
+  smash-boom      "Chunky Explosion" (first 2.2s, faded)   https://opengameart.org/content/chunky-explosion
+  countdown-tick, countdown-go   "Race Start Countdown" (first beep and final "go" beep, CC0 option)
+                  https://opengameart.org/content/race-start-countdown
