@@ -10,7 +10,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import type { PlayerSlot, SnapshotMsg, FighterSnapshot, GameEvent, ClassName } from '@shared/protocol.js';
 import { BODY_CAPSULE_HEIGHT, BODY_CAPSULE_RADIUS, HEAD_RADIUS } from '@shared/constants.js';
 import { createArena, SKY_HORIZON_COLOR } from './Arena.js';
-import { Fighter } from './Fighter.js';
+import { Fighter, damp } from './Fighter.js';
 import { Saber } from './Saber.js';
 import { VFX } from './VFX.js';
 import * as Audio from './Audio.js';
@@ -20,6 +20,13 @@ const FP_SABER_REST = new THREE.Vector3(0.3, -0.4, -0.3);
 /** Raised and pulled toward the center so the cross-body guard fills the view */
 const FP_SABER_GUARD = new THREE.Vector3(0.15, -0.22, -0.45);
 const BASE_FOV = 70;
+/** Smoothing rates (1/s) for snapshot-driven camera and first-person saber */
+const CAMERA_SMOOTH = 20;
+const FP_SABER_SMOOTH = 45;
+/** Swing sound hysteresis: start above SWING_ON, re-arm once back below SWING_OFF */
+const SWING_ON = 4.5;
+const SWING_OFF = 2.5;
+const SWOOSH_COOLDOWN_MS = 140;
 
 export class GameRenderer {
   private renderer: THREE.WebGLRenderer;
@@ -44,8 +51,18 @@ export class GameRenderer {
   private countdownStartTime = 0;
   private countdownDuration = 3000;
   private lastCountdownVal = 3;
+  /** Smoothed per frame toward the snapshot targets below */
   private lastMyPos = new THREE.Vector3();
   private lastOppPos = new THREE.Vector3();
+  private targetMyPos = new THREE.Vector3();
+  private targetOppPos = new THREE.Vector3();
+  private targetSaberWorldQ = new THREE.Quaternion();
+  private hasSnapshot = false;
+
+  private swinging = new Map<PlayerSlot, boolean>();
+  private lastSwooshAt = new Map<PlayerSlot, number>();
+  /** Camera recoil in meters along the view axis (positive = pushed back) */
+  private camKick = 0;
 
   private mySaberWorldQ = new THREE.Quaternion();
   private myBlocking = false;
@@ -61,6 +78,8 @@ export class GameRenderer {
     const initSign = mySlot === 1 ? -1 : 1;
     this.lastMyPos.set(0, 0, initSign * 4);
     this.lastOppPos.set(0, 0, -initSign * 4);
+    this.targetMyPos.copy(this.lastMyPos);
+    this.targetOppPos.copy(this.lastOppPos);
 
     // ─── Renderer ────────────────────────────────────────────────────
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -167,15 +186,22 @@ export class GameRenderer {
     this.fpSaber.setBladeScale(myFighterData.bladeScale);
     this.fpSaber.setBlocking(myFighterData.blocking);
     this.fpSaber.setOvercharged(myFighterData.abilityActive && myFighterData.className === 'striker');
+    this.fpSaber.setStunned(myFighterData.stunned);
     this.myBlocking = myFighterData.blocking;
     const sq = myFighterData.saberQ;
-    this.mySaberWorldQ.set(sq[0], sq[1], sq[2], sq[3]);
+    this.targetSaberWorldQ.set(sq[0], sq[1], sq[2], sq[3]);
 
-    // Save latest positions
+    // Snapshot targets; the render loop eases toward them
     const myPos = myFighterData.position;
     const oppPos = oppFighterData.position;
-    this.lastMyPos.set(myPos[0], myPos[1], myPos[2]);
-    this.lastOppPos.set(oppPos[0], oppPos[1], oppPos[2]);
+    this.targetMyPos.set(myPos[0], myPos[1], myPos[2]);
+    this.targetOppPos.set(oppPos[0], oppPos[1], oppPos[2]);
+    if (!this.hasSnapshot) {
+      this.hasSnapshot = true;
+      this.lastMyPos.copy(this.targetMyPos);
+      this.lastOppPos.copy(this.targetOppPos);
+      this.mySaberWorldQ.copy(this.targetSaberWorldQ);
+    }
 
     // Track countdown state for intro animation
     const inCountdown = snap.state === 'countdown';
@@ -195,16 +221,13 @@ export class GameRenderer {
       this.countdownStartTime = 0;
     }
 
-    // Update camera pose
-    this.updateCamera(performance.now());
-
     // Sound: only during active gameplay (prevents spam after round end)
     const active = snap.state === 'fighting' || snap.state === 'countdown';
     if (active) {
       Audio.updateHum(this.mySlot, myFighterData.tipSpeed);
       Audio.updateHum(oppSlot, oppFighterData.tipSpeed);
-      if (myFighterData.tipSpeed > 3) Audio.playSwoosh(myFighterData.tipSpeed);
-      if (oppFighterData.tipSpeed > 3) Audio.playSwoosh(oppFighterData.tipSpeed);
+      this.detectSwing(this.mySlot, myFighterData.tipSpeed);
+      this.detectSwing(oppSlot, oppFighterData.tipSpeed);
     } else {
       Audio.updateHum(this.mySlot, 0);
       Audio.updateHum(oppSlot, 0);
@@ -216,28 +239,66 @@ export class GameRenderer {
     }
   }
 
+  /** One swoosh per swing (rising edge with hysteresis), not one per snapshot */
+  private detectSwing(slot: PlayerSlot, speed: number): void {
+    const swinging = this.swinging.get(slot) ?? false;
+    if (!swinging && speed > SWING_ON) {
+      this.swinging.set(slot, true);
+      const now = performance.now();
+      if (now - (this.lastSwooshAt.get(slot) ?? 0) > SWOOSH_COOLDOWN_MS) {
+        this.lastSwooshAt.set(slot, now);
+        Audio.playSwoosh(speed);
+      }
+    } else if (swinging && speed < SWING_OFF) {
+      this.swinging.set(slot, false);
+    }
+  }
+
   private handleEvent(event: GameEvent): void {
     switch (event.kind) {
       case 'clash': {
         const p = new THREE.Vector3(...event.point);
-        this.vfx.spawnClashSparks(p, 35);
-        this.vfx.triggerScreenShake(1.2);
-        this.vfx.screenFlash(0xffaa44, 0.2, 0.1);
+        this.vfx.spawnClashSparks(p, 50);
+        this.vfx.triggerScreenShake(1.4);
+        this.vfx.screenFlash(0xffaa44, 0.25, 0.1);
+        this.camKick = Math.max(this.camKick, 0.12);
+        this.fovKick = 4;
         Audio.playClash();
         break;
       }
       case 'hit': {
         const p = new THREE.Vector3(...event.point);
+        const strength = Math.min(1, event.speed / 14);
         this.vfx.spawnHitFlash(p);
-        this.vfx.triggerScreenShake(1.0 + event.speed * 0.15);
-        Audio.playHit();
+        this.vfx.spawnClashSparks(p, 20 + Math.round(strength * 25));
+        this.fighters.get(event.defender)?.react(strength);
+        if (event.defender === this.mySlot) {
+          // Got hit: rocked backward, view widens, red flash
+          this.vfx.triggerScreenShake(1.4 + strength * 1.2);
+          this.vfx.screenFlash(0xff3030, 0.3, 0.15);
+          this.camKick = Math.max(this.camKick, 0.25 + strength * 0.2);
+          this.fovKick = 8 + strength * 6;
+        } else {
+          // Landed it: short punch-in zoom
+          this.vfx.triggerScreenShake(0.8 + strength * 0.6);
+          this.fovKick = -(4 + strength * 4);
+        }
+        Audio.playHit(strength);
         break;
       }
       case 'block': {
         const p = new THREE.Vector3(...event.point);
         this.vfx.spawnBlockFlash(p);
-        this.vfx.spawnClashSparks(p, 15);
-        this.vfx.triggerScreenShake(0.6);
+        this.vfx.spawnClashSparks(p, 30);
+        if (event.blocker === this.mySlot) {
+          this.vfx.triggerScreenShake(0.5);
+        } else {
+          // My swing got parried: knocked back and stunned
+          this.vfx.triggerScreenShake(1.0);
+          this.vfx.screenFlash(0xffffff, 0.2, 0.08);
+          this.camKick = Math.max(this.camKick, 0.18);
+          this.fovKick = 5;
+        }
         Audio.playBlock();
         break;
       }
@@ -422,11 +483,18 @@ export class GameRenderer {
       f.update(dt);
     }
 
-    this.fovKick *= Math.max(0, 1 - 5 * dt);
-    if (this.fovKick < 0.05) this.fovKick = 0;
+    // Ease camera anchors and own saber toward the latest snapshot; snap on teleports/new rounds
+    this.easeToward(this.lastMyPos, this.targetMyPos, dt);
+    this.easeToward(this.lastOppPos, this.targetOppPos, dt);
+    this.mySaberWorldQ.slerp(this.targetSaberWorldQ, damp(FP_SABER_SMOOTH, dt));
+
+    this.fovKick *= Math.exp(-6 * dt);
+    if (Math.abs(this.fovKick) < 0.05) this.fovKick = 0;
+    this.camKick *= Math.exp(-9 * dt);
 
     // Smooth camera updates (intro orbit or first-person)
     this.updateCamera(now);
+    if (this.camKick > 0.002 && !this.isCountdown) this.camera.translateZ(this.camKick);
 
     // FP saber: world-space orientation → camera-local, after the camera has moved this frame
     this.fpSaberGroup.quaternion.copy(this.camera.quaternion).invert().multiply(this.mySaberWorldQ);
@@ -457,6 +525,11 @@ export class GameRenderer {
 
     this.composer.render();
   };
+
+  private easeToward(current: THREE.Vector3, target: THREE.Vector3, dt: number): void {
+    if (current.distanceToSquared(target) > 4) current.copy(target);
+    else current.lerp(target, damp(CAMERA_SMOOTH, dt));
+  }
 
   private onResize(): void {
     const w = window.innerWidth;

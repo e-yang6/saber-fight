@@ -45,11 +45,11 @@ export class FakeController {
       cy * cp,
     ];
 
-    const speed = this.dragging ? 5 : 0;
+    // No real gyro here; the server falls back to blade-position speed
     const msg: OrientationMsg = {
       type: 'orientation',
       q,
-      rotRate: [speed * 100, speed * 100, 0],
+      rotRate: [0, 0, 0],
       t: performance.now(),
     };
     send({ type: 'fakeInput', msg });

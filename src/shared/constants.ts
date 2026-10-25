@@ -13,8 +13,16 @@ export const MAX_KNOCKBACK = 2.5; // meters, before class/ability multipliers
 export const KNOCKBACK_FRICTION = 5; // 1/s velocity decay; slide distance = velocity / friction
 export const HIT_COOLDOWN_MS = 350; // one hit per swing, not one per tick of overlap
 export const CLASH_HITSTOP_MS = 120;
+export const HIT_HITSTOP_MS = 90; // freeze-frame on a clean hit; sells the impact
+export const CLASH_PUSHBACK = 0.5; // meters each fighter slides apart on a blade clash
+export const BLOCK_PUSHBACK = 0.7; // meters a parried attacker is shoved back
 export const BLOCK_STUN_MS = 700;
-export const BLOCK_ANGLE_TOLERANCE = 0.7; // dot product threshold for block angle
+/**
+ * A block holds when the guard is roughly perpendicular to the incoming swing:
+ * |dot(guardDir, swingDir)| must be below this. Flat guard stops chops, upright guard stops side swings.
+ */
+export const BLOCK_ANGLE_TOLERANCE = 0.6;
+export const GYRO_STALE_MS = 150; // ignore phone rotation rate older than this
 export const GUARD_TRANSITION_MS = 100; // time for the blade to turn into / out of the guard pose
 
 // ─── Arena ──────────────────────────────────────────────────────────

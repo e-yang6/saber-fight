@@ -57,124 +57,110 @@ export function updateHum(slot: number, tipSpeed: number): void {
   if (!hum) return;
   // Pitch up with speed
   const baseFreq = 85 + slot * 10;
-  hum.osc.frequency.value = baseFreq + tipSpeed * 15;
-  // Volume up slightly with speed
-  hum.gain.gain.value = 0.05 + Math.min(tipSpeed * 0.01, 0.1);
+  // Glide instead of stepping 60x/s, which zippers audibly
+  const t = getCtx().currentTime;
+  hum.osc.frequency.setTargetAtTime(baseFreq + Math.min(tipSpeed, 20) * 15, t, 0.03);
+  hum.gain.gain.setTargetAtTime(0.05 + Math.min(tipSpeed * 0.01, 0.1), t, 0.03);
 }
 
-/** Swoosh sound on fast swings */
+/** One-shot oscillator with an exponential decay envelope */
+function tone(
+  c: AudioContext, type: OscillatorType, f0: number, f1: number,
+  peak: number, dur: number, at = c.currentTime,
+): void {
+  const osc = c.createOscillator();
+  osc.type = type;
+  osc.frequency.setValueAtTime(f0, at);
+  if (f1 !== f0) osc.frequency.exponentialRampToValueAtTime(f1, at + dur);
+  const gain = c.createGain();
+  gain.gain.setValueAtTime(peak, at);
+  gain.gain.exponentialRampToValueAtTime(0.001, at + dur);
+  osc.connect(gain);
+  gain.connect(masterGain);
+  osc.start(at);
+  osc.stop(at + dur);
+}
+
+/** Filtered noise burst with an exponential decay envelope */
+function noise(
+  c: AudioContext, filterType: BiquadFilterType, freq: number, q: number,
+  peak: number, dur: number, at = c.currentTime,
+): BiquadFilterNode {
+  const src = c.createBufferSource();
+  src.buffer = noiseBuffer(c, dur);
+  const filter = c.createBiquadFilter();
+  filter.type = filterType;
+  filter.frequency.value = freq;
+  filter.Q.value = q;
+  const gain = c.createGain();
+  gain.gain.setValueAtTime(peak, at);
+  gain.gain.exponentialRampToValueAtTime(0.001, at + dur);
+  src.connect(filter);
+  filter.connect(gain);
+  gain.connect(masterGain);
+  src.start(at);
+  src.stop(at + dur);
+  return filter;
+}
+
+/** One "vwoom" per swing: noise swept through a bandpass, louder and brighter when faster */
 export function playSwoosh(speed: number): void {
   const c = getCtx();
   const now = c.currentTime;
+  const k = Math.min(1, speed / 14);
+  const dur = 0.22;
 
-  // Filtered noise burst
-  const bufferSize = c.sampleRate * 0.15;
-  const buffer = c.createBuffer(1, bufferSize, c.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) {
-    data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
-  }
-
-  const source = c.createBufferSource();
-  source.buffer = buffer;
-
+  const src = c.createBufferSource();
+  src.buffer = noiseBuffer(c, dur);
   const filter = c.createBiquadFilter();
   filter.type = 'bandpass';
-  filter.frequency.value = 800 + speed * 200;
-  filter.Q.value = 2;
-
+  filter.Q.value = 3;
+  filter.frequency.setValueAtTime(400 + k * 300, now);
+  filter.frequency.exponentialRampToValueAtTime(1400 + k * 1600, now + dur * 0.45);
+  filter.frequency.exponentialRampToValueAtTime(500, now + dur);
   const gain = c.createGain();
-  gain.gain.setValueAtTime(Math.min(speed * 0.05, 0.3), now);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-
-  source.connect(filter);
+  gain.gain.setValueAtTime(0.001, now);
+  gain.gain.exponentialRampToValueAtTime(0.18 + k * 0.3, now + dur * 0.35);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+  src.connect(filter);
   filter.connect(gain);
   gain.connect(masterGain);
-  source.start(now);
-  source.stop(now + 0.15);
+  src.start(now);
+  src.stop(now + dur);
+
+  // Pitch-bent saber whine on top
+  tone(c, 'sawtooth', 140 + k * 80, 90, 0.06 + k * 0.06, dur);
 }
 
-/** Metallic clash sound */
+/** Blade-on-blade: crack plus a ringing inharmonic metallic chord */
 export function playClash(): void {
   const c = getCtx();
-  const now = c.currentTime;
-
-  // Sharp metallic ping
-  const osc = c.createOscillator();
-  osc.type = 'square';
-  osc.frequency.setValueAtTime(800, now);
-  osc.frequency.exponentialRampToValueAtTime(200, now + 0.3);
-
-  const gain = c.createGain();
-  gain.gain.setValueAtTime(0.4, now);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
-
-  // Noise component for metallic texture
-  const bufferSize = c.sampleRate * 0.1;
-  const buffer = c.createBuffer(1, bufferSize, c.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) {
-    data[i] = (Math.random() * 2 - 1);
+  noise(c, 'highpass', 2500, 0.7, 0.45, 0.08);
+  for (const [f, a] of [[1230, 0.16], [1847, 0.12], [2961, 0.08], [620, 0.14]] as const) {
+    tone(c, 'sine', f, f * 0.97, a, 0.55);
   }
-  const noise = c.createBufferSource();
-  noise.buffer = buffer;
-  const noiseGain = c.createGain();
-  noiseGain.gain.setValueAtTime(0.15, now);
-  noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
-  const hipass = c.createBiquadFilter();
-  hipass.type = 'highpass';
-  hipass.frequency.value = 3000;
-
-  osc.connect(gain);
-  gain.connect(masterGain);
-  osc.start(now);
-  osc.stop(now + 0.3);
-
-  noise.connect(hipass);
-  hipass.connect(noiseGain);
-  noiseGain.connect(masterGain);
-  noise.start(now);
-  noise.stop(now + 0.1);
+  tone(c, 'square', 900, 180, 0.12, 0.18);
+  tone(c, 'sine', 110, 45, 0.5, 0.2);
 }
 
-/** Thuddy hit sound */
-export function playHit(): void {
+/** Saber connects with a body: sub punch + sizzle + crack. `intensity` 0..1 scales it all. */
+export function playHit(intensity = 0.5): void {
   const c = getCtx();
-  const now = c.currentTime;
-
-  const osc = c.createOscillator();
-  osc.type = 'sine';
-  osc.frequency.setValueAtTime(150, now);
-  osc.frequency.exponentialRampToValueAtTime(40, now + 0.2);
-
-  const gain = c.createGain();
-  gain.gain.setValueAtTime(0.5, now);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
-
-  osc.connect(gain);
-  gain.connect(masterGain);
-  osc.start(now);
-  osc.stop(now + 0.2);
+  const k = 0.6 + Math.min(1, Math.max(0, intensity)) * 0.4;
+  tone(c, 'sine', 160, 38, 0.9 * k, 0.32);
+  tone(c, 'triangle', 320, 80, 0.3 * k, 0.12);
+  noise(c, 'lowpass', 1800, 0.8, 0.6 * k, 0.12);
+  noise(c, 'bandpass', 4200, 1.5, 0.25 * k, 0.28);
 }
 
-/** Block sound — dull clank */
+/** Successful parry: bright ring + deep clunk so it reads as "denied" */
 export function playBlock(): void {
   const c = getCtx();
-  const now = c.currentTime;
-
-  const osc = c.createOscillator();
-  osc.type = 'triangle';
-  osc.frequency.setValueAtTime(400, now);
-  osc.frequency.exponentialRampToValueAtTime(100, now + 0.15);
-
-  const gain = c.createGain();
-  gain.gain.setValueAtTime(0.3, now);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-
-  osc.connect(gain);
-  gain.connect(masterGain);
-  osc.start(now);
-  osc.stop(now + 0.15);
+  tone(c, 'sine', 160, 70, 0.5, 0.18);
+  noise(c, 'highpass', 3000, 0.7, 0.3, 0.06);
+  for (const [f, a] of [[1568, 0.16], [2350, 0.1], [784, 0.12]] as const) {
+    tone(c, 'triangle', f, f, a, 0.4);
+  }
 }
 
 function noiseBuffer(c: AudioContext, seconds: number): AudioBuffer {

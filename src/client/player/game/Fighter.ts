@@ -8,26 +8,44 @@ import type { PlayerSlot, FighterSnapshot } from '@shared/protocol.js';
 import { SABER_COLORS } from '@shared/classes.js';
 import { Saber } from './Saber.js';
 
-interface NaiLongPalette { body: number; belly: number; accent: number }
+interface NaiLongPalette { body: number; belly: number }
 
 /** One colour scheme per player so the two Nai Longs are easy to tell apart */
 const NAI_LONG_PALETTES: Record<PlayerSlot, NaiLongPalette> = {
-  1: { body: 0xffd23f, belly: 0xfff2c2, accent: 0xf0a92a }, // classic yellow
-  2: { body: 0x7cc8ff, belly: 0xe2f3ff, accent: 0x4a93d9 }, // sky blue
+  // Extra saturated: ACES tone mapping + bright daylight wash these out toward cream
+  1: { body: 0xffb800, belly: 0xfff0b0 }, // classic yellow
+  2: { body: 0x2f9cff, belly: 0xbfe4ff }, // sky blue
 };
 
 /** Body-local hand position: just in front of the belly, close to the server's hilt point */
 const HAND_POS = new THREE.Vector3(0.14, 0.86, 0.4);
+
+/** Exponential smoothing rates (1/s). Higher = snappier; independent of frame rate. */
+const POS_SMOOTH = 25;
+const SABER_SMOOTH = 35;
+
+/** Frame-rate independent lerp factor */
+export function damp(rate: number, dt: number): number {
+  return 1 - Math.exp(-rate * dt);
+}
 
 export class Fighter {
   readonly group = new THREE.Group();
   readonly saber: Saber;
   readonly slot: PlayerSlot;
 
+  /** Everything except the saber; squashed/tilted for hit reactions */
+  private body = new THREE.Group();
   private armGroup = new THREE.Group();
   private targetPos = new THREE.Vector3();
   private targetSaberQ = new THREE.Quaternion();
   private bodyYaw = 0;
+  private hasSnapshot = false;
+
+  private flashMats: THREE.MeshStandardMaterial[] = [];
+  /** Seconds since the last hit reaction; Infinity when idle */
+  private reactT = Infinity;
+  private reactStrength = 0;
 
   /** Lives in the scene, not in `group`, so it still shows when the own body is hidden in FP */
   barrierMesh: THREE.Group | null = null;
@@ -35,6 +53,7 @@ export class Fighter {
 
   constructor(slot: PlayerSlot) {
     this.slot = slot;
+    this.group.add(this.body);
     this.buildNaiLong(NAI_LONG_PALETTES[slot]);
 
     // Saber pivots at the hand, near where the server places the hilt for collision
@@ -45,26 +64,27 @@ export class Fighter {
   }
 
   /**
-   * Nai Long: a chubby round dragon with a cream belly, big shiny eyes, a wide open smile,
-   * rosy cheeks, stubby limbs and a little tail. Built from primitives; faces +Z.
+   * Nai Long: a chubby bean-shaped dragon whose big domed head flows straight into the body,
+   * with a small open mouth and tongue, big green eyes, stubby clawed limbs and a cream belly.
+   * Built from primitives; faces +Z.
    * Wider than the collision capsule (radius BODY_CAPSULE_RADIUS) for the chubby look.
    */
   private buildNaiLong(p: NaiLongPalette): void {
-    const skin = new THREE.MeshStandardMaterial({ color: p.body, roughness: 0.55 });
+    const skin = new THREE.MeshStandardMaterial({ color: p.body, roughness: 0.5 });
     const belly = new THREE.MeshStandardMaterial({ color: p.belly, roughness: 0.6 });
-    const accent = new THREE.MeshStandardMaterial({ color: p.accent, roughness: 0.6 });
-    const black = new THREE.MeshStandardMaterial({ color: 0x15110e, roughness: 0.2 });
-    const white = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const mouthMat = new THREE.MeshStandardMaterial({ color: 0x8a1f24, roughness: 0.5 });
-    const tongueMat = new THREE.MeshStandardMaterial({ color: 0xff7a8a, roughness: 0.5 });
-    const cheekMat = new THREE.MeshStandardMaterial({
-      color: 0xff8fa3, roughness: 0.8, transparent: true, opacity: 0.85,
-    });
+    this.flashMats.push(skin, belly);
+    const claw = new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.6 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x2a0c10, roughness: 0.7 });
+    const tongueMat = new THREE.MeshStandardMaterial({ color: 0xff6f91, roughness: 0.45 });
+    const eyeWhite = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.25 });
+    const iris = new THREE.MeshStandardMaterial({ color: 0x3ba64a, roughness: 0.3 });
+    const pupil = new THREE.MeshStandardMaterial({ color: 0x0c0c0c, roughness: 0.2 });
+    const shine = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const sphere = new THREE.SphereGeometry(1, 24, 16);
 
     const blob = (
       mat: THREE.Material, pos: [number, number, number], scale: [number, number, number],
-      parent: THREE.Object3D = this.group,
+      parent: THREE.Object3D = this.body,
     ): THREE.Mesh => {
       const m = new THREE.Mesh(sphere, mat);
       m.position.set(...pos);
@@ -73,48 +93,64 @@ export class Fighter {
       parent.add(m);
       return m;
     };
-
-    // One soft pear-shaped body: wide bottom, big round head on top
-    blob(skin, [0, 0.62, 0], [0.42, 0.56, 0.4]);
-    blob(skin, [0, 1.24, 0.02], [0.36, 0.34, 0.34]);
-    blob(belly, [0, 0.6, 0.2], [0.3, 0.4, 0.23]);
-    blob(belly, [0, 1.13, 0.22], [0.2, 0.12, 0.14]); // muzzle
-
-    // Big glossy eyes with highlights
-    for (const side of [-1, 1]) {
-      const eye = blob(black, [side * 0.13, 1.33, 0.29], [0.07, 0.09, 0.05]);
-      eye.castShadow = false;
-      blob(white, [side * 0.13 + 0.02, 1.37, 0.33], [0.022, 0.026, 0.01]).castShadow = false;
-      blob(white, [side * 0.13 - 0.02, 1.3, 0.335], [0.01, 0.012, 0.006]).castShadow = false;
-      blob(cheekMat, [side * 0.24, 1.2, 0.25], [0.06, 0.035, 0.03]).castShadow = false;
-    }
-
-    // Wide open smile with a tongue
-    blob(mouthMat, [0, 1.11, 0.33], [0.11, 0.05, 0.03]).castShadow = false;
-    blob(tongueMat, [0, 1.095, 0.345], [0.06, 0.025, 0.02]).castShadow = false;
-
-    // Stubby feet and a short tail
-    for (const side of [-1, 1]) {
-      blob(accent, [side * 0.17, 0.06, 0.1], [0.13, 0.07, 0.17]);
-    }
-    const tail = blob(skin, [0, 0.28, -0.42], [0.12, 0.1, 0.2]);
-    tail.rotation.x = 0.5;
-
-    // Sword arm: stubby limb from the shoulder to the hand holding the hilt
-    const shoulder = new THREE.Vector3(0.3, 1.0, 0.08);
-    const limb = (from: THREE.Vector3, to: THREE.Vector3) => {
+    const limb = (from: THREE.Vector3, to: THREE.Vector3, radius: number) => {
       const len = from.distanceTo(to);
-      const m = new THREE.Mesh(new THREE.CapsuleGeometry(0.075, len, 4, 10), skin);
+      const m = new THREE.Mesh(new THREE.CapsuleGeometry(radius, len, 4, 10), skin);
       m.position.copy(from).add(to).multiplyScalar(0.5);
       m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), to.clone().sub(from).normalize());
       m.castShadow = true;
-      this.group.add(m);
+      this.body.add(m);
     };
-    limb(shoulder, HAND_POS);
-    blob(skin, [HAND_POS.x, HAND_POS.y, HAND_POS.z], [0.085, 0.085, 0.085]);
+    /** Three little brown claws poking out of a fist or foot, pointing along local +Z */
+    const claws = (at: THREE.Vector3, size: number) => {
+      for (const dx of [-1, 0, 1]) {
+        blob(claw, [at.x + dx * size * 1.6, at.y, at.z], [size * 0.7, size * 0.7, size * 1.2]).castShadow = false;
+      }
+    };
 
-    // Off arm resting on the belly
-    limb(new THREE.Vector3(-0.3, 1.0, 0.08), new THREE.Vector3(-0.2, 0.78, 0.33));
+    // Bean body: the big domed head flows straight into a pear-shaped torso
+    blob(skin, [0, 0.72, 0], [0.42, 0.7, 0.32]);
+    blob(skin, [0, 1.2, 0.02], [0.43, 0.36, 0.36]);
+    blob(belly, [0, 0.6, 0.12], [0.32, 0.45, 0.22]);
+
+    // Small open mouth with the tongue just peeking out
+    blob(dark, [0, 1.06, 0.33], [0.11, 0.06, 0.04]).castShadow = false;
+    const tongue = blob(tongueMat, [0.01, 1.03, 0.36], [0.045, 0.045, 0.02]);
+    tongue.rotation.x = -0.3;
+    tongue.castShadow = false;
+
+    // Eyes on the front of the dome, turned slightly outward
+    for (const side of [-1, 1]) {
+      const eye = new THREE.Group();
+      eye.position.set(side * 0.2, 1.28, 0.3);
+      eye.rotation.y = side * 0.45;
+      this.body.add(eye);
+      blob(eyeWhite, [0, 0, 0], [0.11, 0.12, 0.07], eye).castShadow = false;
+      blob(iris, [0, -0.005, 0.045], [0.068, 0.076, 0.032], eye).castShadow = false;
+      blob(pupil, [0, -0.005, 0.068], [0.036, 0.044, 0.014], eye).castShadow = false;
+      blob(shine, [0.022, 0.03, 0.082], [0.016, 0.018, 0.006], eye).castShadow = false;
+    }
+
+    // Short stumpy legs with toe claws
+    for (const side of [-1, 1]) {
+      blob(skin, [side * 0.2, 0.12, 0.06], [0.14, 0.13, 0.15]);
+      claws(new THREE.Vector3(side * 0.2, 0.07, 0.2), 0.025);
+    }
+
+    // Little tail
+    const tail = blob(skin, [0, 0.3, -0.33], [0.12, 0.1, 0.18]);
+    tail.rotation.x = 0.5;
+
+    // Sword arm: stubby limb from the shoulder to the clawed fist holding the hilt
+    limb(new THREE.Vector3(0.34, 1.0, 0.1), HAND_POS, 0.08);
+    blob(skin, [HAND_POS.x, HAND_POS.y, HAND_POS.z], [0.095, 0.09, 0.09]);
+    claws(new THREE.Vector3(HAND_POS.x, HAND_POS.y + 0.03, HAND_POS.z + 0.08), 0.02);
+
+    // Off arm raised in a little fist, like the figurine
+    const offFist = new THREE.Vector3(-0.42, 1.08, 0.3);
+    limb(new THREE.Vector3(-0.34, 0.98, 0.08), offFist, 0.08);
+    blob(skin, [offFist.x, offFist.y, offFist.z], [0.095, 0.09, 0.09]);
+    claws(new THREE.Vector3(offFist.x, offFist.y + 0.03, offFist.z + 0.08), 0.02);
   }
 
   /** Apply server snapshot. Pass opponent position so body faces them. */
@@ -135,21 +171,40 @@ export class Fighter {
     );
     this.targetSaberQ.copy(invBodyQ.multiply(worldQ));
 
+    if (!this.hasSnapshot) {
+      this.hasSnapshot = true;
+      this.group.position.copy(this.targetPos);
+      this.armGroup.quaternion.copy(this.targetSaberQ);
+    }
+
     this.saber.setColor(SABER_COLORS[snap.saberColor]);
     this.saber.setBladeScale(snap.bladeScale);
     this.saber.setBlocking(snap.blocking);
     this.saber.setOvercharged(snap.abilityActive && snap.className === 'striker');
+    this.saber.setStunned(snap.stunned);
 
     if (this.barrierMesh) {
       this.barrierMesh.visible = snap.abilityActive && snap.className === 'mystic';
     }
   }
 
+  /** Visual recoil: white flash + squash + lean back. `strength` 0..1. */
+  react(strength: number): void {
+    this.reactT = 0;
+    this.reactStrength = Math.min(1, Math.max(0.3, strength));
+  }
+
   update(dt: number): void {
-    this.group.position.lerp(this.targetPos, 0.5);
+    // Big jumps (respawn, new round) snap instead of gliding across the arena
+    if (this.group.position.distanceToSquared(this.targetPos) > 4) {
+      this.group.position.copy(this.targetPos);
+    } else {
+      this.group.position.lerp(this.targetPos, damp(POS_SMOOTH, dt));
+    }
     this.group.rotation.y = this.bodyYaw;
-    this.armGroup.quaternion.slerp(this.targetSaberQ, 0.7);
+    this.armGroup.quaternion.slerp(this.targetSaberQ, damp(SABER_SMOOTH, dt));
     this.saber.update(dt);
+    this.updateReaction(dt);
 
     if (this.barrierMesh?.visible) {
       this.barrierTime += dt;
@@ -163,6 +218,26 @@ export class Fighter {
     } else {
       this.barrierTime = 0;
     }
+  }
+
+  private updateReaction(dt: number): void {
+    if (this.reactT === Infinity) return;
+    this.reactT += dt;
+    const t = this.reactT;
+    if (t > 0.6) {
+      this.reactT = Infinity;
+      this.body.scale.set(1, 1, 1);
+      this.body.rotation.x = 0;
+      for (const m of this.flashMats) m.emissive.setRGB(0, 0, 0);
+      return;
+    }
+    const s = this.reactStrength;
+    // Damped wobble: squash down/wide on impact, then spring back
+    const wobble = 0.22 * s * Math.exp(-t * 9) * Math.cos(t * 32);
+    this.body.scale.set(1 + wobble * 0.6, 1 - wobble, 1 + wobble * 0.6);
+    this.body.rotation.x = -0.35 * s * Math.exp(-t * 7);
+    const flash = Math.max(0, 1 - t / 0.12) * 0.9;
+    for (const m of this.flashMats) m.emissive.setRGB(flash, flash, flash);
   }
 
   createBarrier(scene: THREE.Scene): THREE.Group {

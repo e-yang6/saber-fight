@@ -15,6 +15,7 @@ import {
   SWING_SPEED_THRESHOLD, BASE_KNOCKBACK, KNOCKBACK_SPEED_SCALE,
   MAX_KNOCKBACK, KNOCKBACK_FRICTION, HIT_COOLDOWN_MS,
   CLASH_HITSTOP_MS, BLOCK_STUN_MS, BLOCK_ANGLE_TOLERANCE, GUARD_TRANSITION_MS,
+  HIT_HITSTOP_MS, CLASH_PUSHBACK, BLOCK_PUSHBACK, GYRO_STALE_MS,
   BLADE_LENGTH, BLADE_RADIUS, HILT_LENGTH,
   BODY_CAPSULE_RADIUS, BODY_CAPSULE_HEIGHT,
   PLATFORM_RADIUS, WATER_LEVEL,
@@ -42,6 +43,11 @@ class ServerFighter {
   prevTip = new Vec3();
   prevBase = new Vec3();
   tipSpeed = 0;
+  /** Smoothed blade-tip speed from position deltas (fallback when there's no gyro, e.g. bot) */
+  private positionalSpeed = 0;
+  /** Latest phone gyro rate in deg/s as DeviceMotion [alpha=Z, beta=X, gamma=Y], and when it arrived */
+  rotRate: [number, number, number] = [0, 0, 0];
+  rotRateAt = 0;
   blocking = false;
   /** 0 = normal grip, 1 = fully in guard pose; eased toward `blocking` each tick */
   guardBlend = 0;
@@ -126,6 +132,22 @@ class ServerFighter {
     this.bladeTip.copy(this.bladeBase).addScaled(bladeDir, BLADE_LENGTH * this.bladeScale);
   }
 
+  /**
+   * Tip speed for swing/hit detection. Network bursts make per-tick blade deltas jumpy
+   * (fast, zero, fast...), so prefer the phone's gyro: rotation about the device's X and Z
+   * axes swings the tip; rotation about Y (the blade axis) only twists it.
+   */
+  updateTipSpeed(dt: number, now: number): void {
+    const raw = this.bladeTip.distanceTo(this.prevTip) / Math.max(dt, 0.001);
+    this.positionalSpeed += (raw - this.positionalSpeed) * 0.5;
+    let gyroSpeed = 0;
+    if (now - this.rotRateAt < GYRO_STALE_MS) {
+      const radPerSec = Math.hypot(this.rotRate[0], this.rotRate[1]) * (Math.PI / 180);
+      gyroSpeed = radPerSec * (HILT_LENGTH + BLADE_LENGTH * this.bladeScale);
+    }
+    this.tipSpeed = Math.max(this.positionalSpeed, gyroSpeed);
+  }
+
   getBodyCapsule(): { a: Vec3; b: Vec3; radius: number } {
     const a = new Vec3(this.position.x, this.position.y + BODY_CAPSULE_RADIUS, this.position.z);
     const b = new Vec3(this.position.x, this.position.y + BODY_CAPSULE_HEIGHT + BODY_CAPSULE_RADIUS, this.position.z);
@@ -206,6 +228,10 @@ export class GameServer {
   handleOrientation(slot: PlayerSlot, msg: OrientationMsg): void {
     const f = this.fighters.get(slot)!;
     f.targetQ.set(msg.q[0], msg.q[1], msg.q[2], msg.q[3]);
+    if (msg.rotRate) {
+      f.rotRate = msg.rotRate;
+      f.rotRateAt = performance.now();
+    }
   }
 
   handleButton(slot: PlayerSlot, msg: ButtonMsg): void {
@@ -348,8 +374,8 @@ export class GameServer {
     f2.updateBlade(f1.position);
 
     // Compute tip speed
-    f1.tipSpeed = f1.bladeTip.distanceTo(f1.prevTip) / Math.max(dt, 0.001);
-    f2.tipSpeed = f2.bladeTip.distanceTo(f2.prevTip) / Math.max(dt, 0.001);
+    f1.updateTipSpeed(dt, now);
+    f2.updateTipSpeed(dt, now);
 
     // Combat (only during fighting)
     if (this.state === 'fighting' && now >= this.hitstopUntil) {
@@ -417,7 +443,7 @@ export class GameServer {
     if (bladeCheck.distSq < clashDist * clashDist) {
       if (f1.tipSpeed > SWING_SPEED_THRESHOLD * 0.5 && f2.tipSpeed > SWING_SPEED_THRESHOLD * 0.5) {
         const mid = Vec3.lerp(bladeCheck.pointA, bladeCheck.pointB, 0.5);
-        this.resolveClash(mid, now);
+        this.resolveClash(f1, f2, mid, now);
         return;
       }
     }
@@ -449,7 +475,7 @@ export class GameServer {
     if (defender.blocking) {
       const bladeDir = Vec3.sub(defender.bladeTip, defender.bladeBase).normalize();
       const swingDir = Vec3.sub(attacker.bladeTip, attacker.prevTip).normalize();
-      if (Math.abs(bladeDir.dot(swingDir)) > BLOCK_ANGLE_TOLERANCE) {
+      if (Math.abs(bladeDir.dot(swingDir)) < BLOCK_ANGLE_TOLERANCE) {
         this.resolveBlock(defender, attacker, swept.point, now);
         return;
       }
@@ -458,8 +484,10 @@ export class GameServer {
     this.resolveHit(attacker, defender, swept.point, now);
   }
 
-  private resolveClash(point: Vec3, now: number): void {
+  private resolveClash(f1: ServerFighter, f2: ServerFighter, point: Vec3, now: number): void {
     this.hitstopUntil = now + CLASH_HITSTOP_MS;
+    this.shove(f1, f2, CLASH_PUSHBACK);
+    this.shove(f2, f1, CLASH_PUSHBACK);
     this.events.push({ kind: 'clash', point: point.toArray() });
     this.cb.sendHaptic(1, 'clash');
     this.cb.sendHaptic(2, 'clash');
@@ -477,13 +505,10 @@ export class GameServer {
     knockback *= aCfg.knockbackDealt * dCfg.knockbackReceived;
     if (attacker.abilityActive && attacker.className === 'striker') knockback *= 2;
 
-    const dir = Vec3.sub(defender.position, attacker.position);
-    dir.y = 0;
-    dir.normalize();
-    defender.velocity.addScaled(dir, knockback * KNOCKBACK_FRICTION);
+    this.shove(defender, attacker, knockback);
     defender.hitImmuneUntil = now + HIT_COOLDOWN_MS;
 
-    this.hitstopUntil = now + 40;
+    this.hitstopUntil = now + HIT_HITSTOP_MS;
     this.events.push({
       kind: 'hit', attacker: attacker.slot, defender: defender.slot,
       point: point.toArray(), speed,
@@ -495,9 +520,19 @@ export class GameServer {
   private resolveBlock(blocker: ServerFighter, attacker: ServerFighter, point: Vec3, now: number): void {
     attacker.stunned = true;
     attacker.stunnedUntil = now + BLOCK_STUN_MS;
+    this.shove(attacker, blocker, BLOCK_PUSHBACK);
+    this.hitstopUntil = now + CLASH_HITSTOP_MS / 2;
     this.events.push({ kind: 'block', blocker: blocker.slot, point: point.toArray() });
     this.cb.sendHaptic(blocker.slot, 'block');
     this.cb.sendHaptic(attacker.slot, 'clash');
+  }
+
+  /** Push `target` horizontally away from `from` by roughly `meters` of slide. */
+  private shove(target: ServerFighter, from: ServerFighter, meters: number): void {
+    const dir = Vec3.sub(target.position, from.position);
+    dir.y = 0;
+    dir.normalize();
+    target.velocity.addScaled(dir, meters * KNOCKBACK_FRICTION);
   }
 
   // ─── Physics ───────────────────────────────────────────────────────
