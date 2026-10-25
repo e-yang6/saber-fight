@@ -8,12 +8,147 @@ interface Particle {
   maxLife: number;
 }
 
+interface ComicHitMarker {
+  mesh: THREE.Mesh;
+  mat: THREE.MeshBasicMaterial;
+  ring: THREE.Mesh;
+  ringMat: THREE.MeshBasicMaterial;
+  life: number;
+  maxLife: number;
+  baseScale: number;
+}
+
+/** Generates a high-contrast comic starburst canvas texture with impact crosshair */
+function createComicStarburstTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d')!;
+
+  const cx = 256;
+  const cy = 256;
+
+  function drawStarburst(points: number, outerR: number, innerR: number, angleOffset = 0) {
+    ctx.beginPath();
+    for (let i = 0; i < points * 2; i++) {
+      const angle = (i * Math.PI) / points + angleOffset;
+      const r = i % 2 === 0 ? outerR : innerR;
+      const x = cx + Math.cos(angle) * r;
+      const y = cy + Math.sin(angle) * r;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+  }
+
+  // 1. Radial Comic Impact Speed Lines
+  ctx.save();
+  ctx.strokeStyle = '#FFAA00';
+  ctx.lineWidth = 7;
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 14; i++) {
+    const angle = (i * Math.PI * 2) / 14 + 0.12;
+    const r1 = 200;
+    const r2 = 246 + (i % 2 === 0 ? 8 : -6);
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(angle) * r1, cy + Math.sin(angle) * r1);
+    ctx.lineTo(cx + Math.cos(angle) * r2, cy + Math.sin(angle) * r2);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // 2. Bold Black Comic Outline for Main Starburst
+  ctx.save();
+  drawStarburst(16, 215, 125, 0);
+  ctx.fillStyle = '#000000';
+  ctx.fill();
+  ctx.lineWidth = 14;
+  ctx.strokeStyle = '#000000';
+  ctx.stroke();
+  ctx.restore();
+
+  // 3. Outer Vivid Comic Red-Orange Starburst
+  ctx.save();
+  drawStarburst(16, 202, 118, 0);
+  const grad1 = ctx.createRadialGradient(cx, cy, 30, cx, cy, 210);
+  grad1.addColorStop(0, '#FF8800');
+  grad1.addColorStop(0.7, '#FF3300');
+  grad1.addColorStop(1, '#D91100');
+  ctx.fillStyle = grad1;
+  ctx.fill();
+  ctx.restore();
+
+  // 4. Middle Brilliant Yellow Starburst
+  ctx.save();
+  drawStarburst(14, 165, 85, 0.22);
+  ctx.fillStyle = '#000000';
+  ctx.lineWidth = 10;
+  ctx.strokeStyle = '#000000';
+  ctx.stroke();
+  const grad2 = ctx.createRadialGradient(cx, cy, 20, cx, cy, 170);
+  grad2.addColorStop(0, '#FFF500');
+  grad2.addColorStop(0.8, '#FFCC00');
+  grad2.addColorStop(1, '#FFA500');
+  ctx.fillStyle = grad2;
+  ctx.fill();
+  ctx.restore();
+
+  // 5. Inner White High-Energy Spike Core
+  ctx.save();
+  drawStarburst(10, 110, 50, 0.1);
+  ctx.fillStyle = '#000000';
+  ctx.lineWidth = 7;
+  ctx.strokeStyle = '#000000';
+  ctx.stroke();
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fill();
+  ctx.restore();
+
+  // 6. Central Stylized Comic Impact Diamond Star
+  ctx.save();
+  ctx.fillStyle = '#FF2200';
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - 65);
+  ctx.quadraticCurveTo(cx, cy, cx + 65, cy);
+  ctx.quadraticCurveTo(cx, cy, cx, cy + 65);
+  ctx.quadraticCurveTo(cx, cy, cx - 65, cy);
+  ctx.quadraticCurveTo(cx, cy, cx, cy - 65);
+  ctx.closePath();
+  ctx.fill();
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = '#FFFFFF';
+  ctx.stroke();
+  ctx.restore();
+
+  // 7. Center Bright White Diamond Accent
+  ctx.save();
+  ctx.fillStyle = '#FFFFFF';
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - 30);
+  ctx.quadraticCurveTo(cx, cy, cx + 30, cy);
+  ctx.quadraticCurveTo(cx, cy, cx, cy + 30);
+  ctx.quadraticCurveTo(cx, cy, cx - 30, cy);
+  ctx.quadraticCurveTo(cx, cy, cx, cy - 30);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
 export class VFX {
   private scene: THREE.Scene;
+  private camera: THREE.Camera | null = null;
   private particles: Particle[] = [];
   private screenShake = 0;
   private sparkGeo: THREE.SphereGeometry;
   private sparkPool: THREE.Mesh[] = [];
+
+  // Comic hit marker billboard pool (zero sparks on hit, single punchy impact effect)
+  private hitMarkerPool: ComicHitMarker[] = [];
+  private activeHitMarkers: ComicHitMarker[] = [];
 
   // Full-screen flash overlay
   private flashMesh: THREE.Mesh;
@@ -51,10 +186,47 @@ export class VFX {
     );
     this.flashMesh.renderOrder = 999;
     this.flashMesh.frustumCulled = false;
+
+    // Pre-allocate comic hit marker billboard meshes (2.2m size for big, clear visual feedback)
+    const hitTexture = createComicStarburstTexture();
+    const hitGeo = new THREE.PlaneGeometry(2.2, 2.2);
+    const ringGeo = new THREE.RingGeometry(0.3, 0.55, 32);
+
+    for (let i = 0; i < 6; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        map: hitTexture,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+      const mesh = new THREE.Mesh(hitGeo, mat);
+      mesh.visible = false;
+      mesh.renderOrder = 50;
+      scene.add(mesh);
+
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0xffcc00,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+      });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.visible = false;
+      ring.renderOrder = 49;
+      scene.add(ring);
+
+      this.hitMarkerPool.push({
+        mesh, mat, ring, ringMat, life: 0, maxLife: 0.28, baseScale: 2.0,
+      });
+    }
   }
 
-  /** Attach flash plane to camera so it always fills the screen */
+  /** Attach flash plane and store camera reference so hit markers can face viewer */
   attachToCamera(camera: THREE.Camera): void {
+    this.camera = camera;
     this.flashMesh.position.set(0, 0, -0.5);
     camera.add(this.flashMesh);
   }
@@ -96,22 +268,39 @@ export class VFX {
     }
   }
 
-  /** Hit flash — big white burst + red screen tint */
+  /** Big, vibrant comic starburst hit marker on top of where the fighter was struck (no sparks) */
   spawnHitFlash(position: THREE.Vector3): void {
-    const geo = new THREE.SphereGeometry(0.8, 8, 8);
-    const mat = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 1,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.copy(position);
-    this.scene.add(mesh);
-    this.particles.push({ mesh, velocity: new THREE.Vector3(), life: 0.2, maxLife: 0.2 });
+    this.spawnComicHitMarker(position);
+  }
 
-    this.screenFlash(0xff4444, 0.3, 0.2);
+  /** Spawn a single comic starburst hit marker on the contact point */
+  spawnComicHitMarker(position: THREE.Vector3): void {
+    // Find available pooled hit marker or recycle oldest active
+    let marker: ComicHitMarker | undefined = this.hitMarkerPool.find(m => !m.mesh.visible);
+    if (!marker && this.activeHitMarkers.length > 0) {
+      marker = this.activeHitMarkers.shift();
+    }
+    if (!marker) return;
+
+    marker.mesh.position.copy(position);
+    marker.ring.position.copy(position);
+    if (this.camera) {
+      marker.mesh.quaternion.copy(this.camera.quaternion);
+      marker.ring.quaternion.copy(this.camera.quaternion);
+    }
+    marker.mesh.scale.setScalar(0.4 * marker.baseScale);
+    marker.ring.scale.setScalar(0.4 * marker.baseScale);
+    marker.mat.opacity = 1;
+    marker.ringMat.opacity = 0.8;
+    marker.mesh.visible = true;
+    marker.ring.visible = true;
+    marker.life = 0.28;
+    marker.maxLife = 0.28;
+
+    this.activeHitMarkers.push(marker);
+
+    // Screen flash (clean red impact flash, no sparks)
+    this.screenFlash(0xff3333, 0.25, 0.15);
   }
 
   /** Block shield flash — bright colored burst at block point */
@@ -333,6 +522,51 @@ export class VFX {
   }
 
   update(dt: number): void {
+    // ─── Update Comic Hit Markers ─────────────────────────────────────
+    for (let i = this.activeHitMarkers.length - 1; i >= 0; i--) {
+      const hm = this.activeHitMarkers[i];
+      hm.life -= dt;
+      if (hm.life <= 0) {
+        hm.mesh.visible = false;
+        hm.ring.visible = false;
+        this.activeHitMarkers.splice(i, 1);
+        continue;
+      }
+      const progress = 1 - hm.life / hm.maxLife; // 0 to 1
+
+      // Keep billboard facing the camera
+      if (this.camera) {
+        hm.mesh.quaternion.copy(this.camera.quaternion);
+        hm.ring.quaternion.copy(this.camera.quaternion);
+      }
+
+      // Elastic comic pop animation:
+      // 0 -> 0.22: explosive pop-in with overshoot up to 1.35x
+      // 0.22 -> 1.0: snappy settle to 1.05x
+      let scale = 1;
+      if (progress < 0.22) {
+        const t = progress / 0.22;
+        scale = (0.35 + 1.0 * Math.sin(t * Math.PI * 0.5)) * hm.baseScale;
+      } else {
+        const t = (progress - 0.22) / 0.78;
+        scale = (1.35 - 0.3 * t) * hm.baseScale;
+      }
+      hm.mesh.scale.setScalar(scale);
+
+      // Opacity: stay solid until 65%, then rapid fade out
+      if (progress < 0.65) {
+        hm.mat.opacity = 1;
+      } else {
+        hm.mat.opacity = Math.max(0, 1 - (progress - 0.65) / 0.35);
+      }
+
+      // Expanding comic shock ring
+      const ringScale = (0.4 + progress * 2.8) * hm.baseScale;
+      hm.ring.scale.setScalar(ringScale);
+      hm.ringMat.opacity = Math.max(0, 0.85 * (1 - progress));
+    }
+
+    // ─── Update Existing Particles ────────────────────────────────────
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
       p.life -= dt;

@@ -270,7 +270,6 @@ export class GameRenderer {
         const p = new THREE.Vector3(...event.point);
         const strength = Math.min(1, event.speed / 14);
         this.vfx.spawnHitFlash(p);
-        this.vfx.spawnClashSparks(p, 20 + Math.round(strength * 25));
         this.fighters.get(event.defender)?.react(strength);
         if (event.defender === this.mySlot) {
           // Got hit: rocked backward, view widens, red flash
