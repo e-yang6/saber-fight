@@ -58,12 +58,18 @@ function showScreen(name: keyof typeof screens) {
 // ─── Player ID (localStorage for reconnect) ─────────────────────────
 
 function getPlayerId(): string {
-  let id = localStorage.getItem('saber-fight-player-id');
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem('saber-fight-player-id', id);
+  try {
+    let id = localStorage.getItem('saber-fight-player-id');
+    if (!id) {
+      id = (typeof crypto.randomUUID === 'function')
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2) + Date.now().toString(36);
+      localStorage.setItem('saber-fight-player-id', id);
+    }
+    return id;
+  } catch {
+    return Math.random().toString(36).slice(2) + Date.now().toString(36);
   }
-  return id;
 }
 
 // ─── Wake Lock ──────────────────────────────────────────────────────
@@ -268,30 +274,27 @@ function init() {
     return;
   }
 
-  const hapticStatus = initHaptics();
-  initOrientation();
-  setupGameControls();
-
-  if (location.search.includes('debug')) {
-    document.getElementById('debug-panel')!.style.display = 'block';
-    const log = document.getElementById('debug-log')!;
-    log.textContent = `Haptics: vibrate=${hapticStatus.vibrate} iosSwitch=${hapticStatus.iosSwitch}\nToken: ${token}`;
-    btnTestHaptics.addEventListener('click', testAllHaptics);
-  }
-
+  // Bind the connect button FIRST so it always works even if other init fails
   btnConnect.addEventListener('click', async () => {
     btnConnect.disabled = true;
     connectStatus.textContent = 'Requesting permissions...';
 
-    const granted = await requestMotionPermission();
-    if (!granted) {
-      connectStatus.textContent = 'Motion permission denied. Reload and try again.';
-      btnConnect.disabled = false;
-      return;
+    try {
+      const granted = await requestMotionPermission();
+      if (!granted) {
+        connectStatus.textContent = 'Motion permission denied. Reload and try again.';
+        btnConnect.disabled = false;
+        return;
+      }
+      orientationGranted = true;
+      startOrientationStream();
+      await requestWakeLock();
+    } catch (e) {
+      console.error('[controller] permission error:', e);
+      connectStatus.textContent = 'Permission error. Continuing anyway...';
+      orientationGranted = true;
+      startOrientationStream();
     }
-    orientationGranted = true;
-    startOrientationStream();
-    await requestWakeLock();
 
     connectStatus.textContent = 'Connecting...';
 
@@ -316,6 +319,18 @@ function init() {
   });
 
   document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+
+  // These can fail on some browsers — don't let them block the UI
+  try { initHaptics(); } catch (e) { console.warn('[haptics] init failed:', e); }
+  try { initOrientation(); } catch (e) { console.warn('[orientation] init failed:', e); }
+  setupGameControls();
+
+  if (location.search.includes('debug')) {
+    document.getElementById('debug-panel')!.style.display = 'block';
+    const log = document.getElementById('debug-log')!;
+    log.textContent = `Token: ${token}`;
+    btnTestHaptics.addEventListener('click', testAllHaptics);
+  }
 }
 
 init();

@@ -42,6 +42,13 @@ async function main() {
   const app = express();
   const session = new GameSession();
 
+
+  // Bypass ngrok's browser interstitial warning
+  app.use((_req, res, next) => {
+    res.setHeader('ngrok-skip-browser-warning', '1');
+    next();
+  });
+
   // Always run HTTP on PORT (for laptop + cloudflare tunnel)
   const server = createHttpServer(app);
 
