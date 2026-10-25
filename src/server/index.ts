@@ -260,7 +260,7 @@ async function main() {
   });
 
   server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Saber Fight! server running at http://localhost:${PORT}`);
+    console.log(`Nailong Battle! server running at http://localhost:${PORT}`);
     console.log(`  Player:     http://localhost:${PORT}/player/`);
     console.log(`  Test mode:  http://localhost:${PORT}/player/?test`);
     console.log(`\nFor phone access, run: npm run tunnel`);

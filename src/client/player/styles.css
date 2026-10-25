@@ -7,8 +7,10 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+button, input, select { font: inherit; }
+
 body {
-  font-family: system-ui, sans-serif;
+  font-family: "Comic Sans MS", "Comic Sans", "Chalkboard SE", "Comic Neue", cursive;
   background: var(--bg);
   color: var(--fg);
   overflow: hidden;
@@ -19,12 +21,52 @@ body {
 .screen { display: none; position: absolute; inset: 0; flex-direction: column; align-items: center; justify-content: center; gap: 16px; z-index: 10; background: var(--bg); }
 .screen.active { display: flex; }
 
+/* Menus float over the live 3D scene (the camera orbits the platform behind them) */
+.screen.menu-screen {
+  background: radial-gradient(ellipse at center, rgba(0,0,0,0) 35%, rgba(0,0,0,0.45) 100%);
+  justify-content: flex-start; padding-top: 6vh;
+}
+/* Keep the fighters in the middle of the platform visible: card to the side on wide screens, bottom otherwise */
+.menu-screen .menu-card { position: absolute; right: 4vw; top: 50%; transform: translateY(-40%); }
+@media (max-aspect-ratio: 5/4) {
+  .menu-screen .menu-card { right: auto; top: auto; bottom: 4vh; transform: none; }
+}
+.game-title {
+  font-size: 72px; font-weight: 700; letter-spacing: 1px;
+  color: #ffd23a;
+  -webkit-text-stroke: 3px #5a3a00;
+  paint-order: stroke fill;
+  text-shadow: 0 6px 0 #5a3a00, 0 10px 24px rgba(0,0,0,0.45);
+  transform: rotate(-3deg);
+  animation: title-bob 3s ease-in-out infinite;
+}
+@keyframes title-bob {
+  0%, 100% { transform: rotate(-3deg) translateY(0); }
+  50% { transform: rotate(-1deg) translateY(-8px); }
+}
+.menu-card {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  padding: 20px 28px; max-width: min(420px, 90vw);
+  background: rgba(10, 14, 28, 0.62);
+  border: 2px solid rgba(255,255,255,0.18);
+  border-radius: 18px;
+  backdrop-filter: blur(6px);
+  text-align: center;
+}
+.menu-card h2 { font-weight: normal; font-size: 24px; }
+#btn-solo-lobby {
+  margin-top: 4px; padding: 10px 24px; font-size: 16px;
+  background: #ffd23a; color: #3a2600; border: 2px solid #5a3a00;
+  border-radius: 12px; cursor: pointer;
+}
+#btn-solo-lobby:hover { filter: brightness(1.08); }
+
 h1 { font-weight: normal; font-size: 32px; }
 
 #qr-canvas { image-rendering: pixelated; width: 240px; height: 240px; }
 #lobby-status { font-size: 20px; }
 #lobby-url { font-size: 12px; color: var(--dim); word-break: break-all; max-width: 80%; text-align: center; }
-#controller-status { font-size: 16px; color: var(--dim); }
+#controller-status { font-size: 16px; color: #ccc; }
 
 #game-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 

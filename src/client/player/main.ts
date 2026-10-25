@@ -129,6 +129,7 @@ function handleGameState(state: GameState): void {
     clearTimeout(resultTimer);
     resultTimer = null;
   }
+  renderer?.setMenuMode(state === 'lobby' || state === 'classSelect');
   switch (state) {
     case 'lobby':
       showScreen('lobby');
@@ -169,6 +170,7 @@ function handleMessage(msg: ServerToPlayerMsg): void {
 
       // Create renderer now that we know our slot
       renderer = new GameRenderer(gameCanvas, mySlot);
+      renderer.setMenuMode(currentState === 'lobby' || currentState === 'classSelect');
       renderer.start();
 
       // Start head tracking if enabled

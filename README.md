@@ -1,4 +1,4 @@
-# Saber Fight!
+# Nailong Battle!
 
 A 3D lightsaber dueling game inspired by Wii Sports Resort Swordplay (Duel mode). Two players each bring their own laptop + phone — the phone is the sword controller, the laptop renders a first-person view with head-coupled parallax.
 

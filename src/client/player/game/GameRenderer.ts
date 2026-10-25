@@ -27,6 +27,11 @@ const FP_SABER_SMOOTH = 45;
 const SWING_ON = 4.5;
 const SWING_OFF = 2.5;
 const SWOOSH_COOLDOWN_MS = 140;
+/** Main menu orbit around the platform center */
+const MENU_ORBIT_RADIUS = 16;
+const MENU_ORBIT_HEIGHT = 6;
+const MENU_ORBIT_SPEED = 0.12; // rad/s
+const MENU_FOV = 55;
 
 export class GameRenderer {
   private renderer: THREE.WebGLRenderer;
@@ -58,6 +63,7 @@ export class GameRenderer {
   private targetOppPos = new THREE.Vector3();
   private targetSaberWorldQ = new THREE.Quaternion();
   private hasSnapshot = false;
+  private menuMode = true;
 
   private swinging = new Map<PlayerSlot, boolean>();
   private lastSwooshAt = new Map<PlayerSlot, number>();
@@ -422,8 +428,29 @@ export class GameRenderer {
     );
   }
 
-  /** Update camera position and orientation: 360-degree crane intro or first-person */
+  /** Main menu: slow orbit around the platform with both fighters on show */
+  setMenuMode(on: boolean): void {
+    this.menuMode = on;
+  }
+
+  /** Update camera position and orientation: menu orbit, 360-degree crane intro or first-person */
   private updateCamera(now: number): void {
+    if (this.menuMode) {
+      const theta = (now / 1000) * MENU_ORBIT_SPEED;
+      this.camera.position.set(
+        MENU_ORBIT_RADIUS * Math.sin(theta),
+        MENU_ORBIT_HEIGHT,
+        MENU_ORBIT_RADIUS * Math.cos(theta),
+      );
+      // Narrow windows stack the menu card at the bottom, so lift the platform above it
+      this.camera.lookAt(0, this.camera.aspect < 1.25 ? -3.5 : 1.2, 0);
+      for (const f of this.fighters.values()) f.group.visible = true;
+      this.fpSaberGroup.visible = false;
+      this.camera.fov = MENU_FOV;
+      this.camera.updateProjectionMatrix();
+      return;
+    }
+
     const eyeHeight = BODY_CAPSULE_HEIGHT + BODY_CAPSULE_RADIUS * 2 + HEAD_RADIUS * 0.5;
     const baseEye = new THREE.Vector3(this.lastMyPos.x, this.lastMyPos.y + eyeHeight, this.lastMyPos.z);
     const oppHead = new THREE.Vector3(this.lastOppPos.x, this.lastOppPos.y + 1.2, this.lastOppPos.z);
@@ -534,7 +561,7 @@ export class GameRenderer {
 
     // Smooth camera updates (intro orbit or first-person)
     this.updateCamera(now);
-    if (this.camKick > 0.002 && !this.isCountdown) this.camera.translateZ(this.camKick);
+    if (this.camKick > 0.002 && !this.isCountdown && !this.menuMode) this.camera.translateZ(this.camKick);
 
     // FP saber: world-space orientation → camera-local, after the camera has moved this frame
     this.fpSaberGroup.quaternion.copy(this.camera.quaternion).invert().multiply(this.mySaberWorldQ);

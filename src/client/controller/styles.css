@@ -25,8 +25,11 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+button, input, select { font: inherit; }
+
 body {
-  font-family: system-ui, sans-serif;
+  /* Phones rarely ship Comic Sans; Chalkboard SE (iOS) and cursive (Android) are the closest stand-ins */
+  font-family: "Comic Sans MS", "Comic Sans", "Chalkboard SE", "Comic Neue", cursive;
   background: var(--bg);
   color: var(--fg);
   min-height: 100dvh;

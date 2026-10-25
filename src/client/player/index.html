@@ -3,26 +3,31 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Saber Fight!</title>
+  <title>Nailong Battle!</title>
   <meta name="description" content="Multiplayer motion-controlled saber duel game with 3D combat, physics, mobile phone controller, and solo practice mode.">
-  <meta property="og:title" content="Saber Fight!">
+  <meta property="og:title" content="Nailong Battle!">
   <meta property="og:description" content="Multiplayer motion-controlled saber duel game with 3D combat, physics, mobile phone controller, and solo practice mode.">
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <div id="lobby" class="screen active">
-    <h1>Saber Fight!</h1>
-    <p id="lobby-status">Connecting...</p>
-    <canvas id="qr-canvas"></canvas>
-    <p id="lobby-url"></p>
-    <p id="controller-status"></p>
-    <button id="btn-solo-lobby" style="margin-top: 12px; padding: 10px 24px; font-size: 16px; background: #222; color: #fff; border: 1px solid #555; cursor: pointer; border-radius: 6px;">Play Solo vs Bot (Mouse &amp; Keyboard)</button>
+  <div id="lobby" class="screen menu-screen active">
+    <h1 class="game-title">Nailong Battle!</h1>
+    <div class="menu-card">
+      <p id="lobby-status">Connecting...</p>
+      <canvas id="qr-canvas"></canvas>
+      <p id="lobby-url"></p>
+      <p id="controller-status"></p>
+      <button id="btn-solo-lobby">Play Solo vs Bot (Mouse &amp; Keyboard)</button>
+    </div>
   </div>
 
-  <div id="class-select-screen" class="screen">
-    <h1>Waiting for class selection on your phone</h1>
-    <p id="class-info">—</p>
-    <p id="opponent-status">Waiting for opponent...</p>
+  <div id="class-select-screen" class="screen menu-screen">
+    <h1 class="game-title">Nailong Battle!</h1>
+    <div class="menu-card">
+      <h2>Waiting for class selection on your phone</h2>
+      <p id="class-info">—</p>
+      <p id="opponent-status">Waiting for opponent...</p>
+    </div>
   </div>
 
   <canvas id="game-canvas"></canvas>
