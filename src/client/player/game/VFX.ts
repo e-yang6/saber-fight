@@ -1,6 +1,11 @@
 import * as THREE from 'three';
 import { WATER_LEVEL } from '@shared/constants.js';
 
+/** Comic hit marker: 2.2 m plane × this; pops to ~1.35× it (≈1.8 m), so it doesn't swallow the fighter */
+const HIT_MARKER_SCALE = 0.6;
+const HIT_MARKER_OPACITY = 0.55;
+const HIT_MARKER_RING_OPACITY = 0.35;
+
 interface Particle {
   mesh: THREE.Mesh;
   velocity: THREE.Vector3;
@@ -187,7 +192,7 @@ export class VFX {
     this.flashMesh.renderOrder = 999;
     this.flashMesh.frustumCulled = false;
 
-    // Pre-allocate comic hit marker billboard meshes (2.2m size for big, clear visual feedback)
+    // Pre-allocate comic hit marker billboard meshes
     const hitTexture = createComicStarburstTexture();
     const hitGeo = new THREE.PlaneGeometry(2.2, 2.2);
     const ringGeo = new THREE.RingGeometry(0.3, 0.55, 32);
@@ -219,7 +224,7 @@ export class VFX {
       scene.add(ring);
 
       this.hitMarkerPool.push({
-        mesh, mat, ring, ringMat, life: 0, maxLife: 0.28, baseScale: 2.0,
+        mesh, mat, ring, ringMat, life: 0, maxLife: 0.28, baseScale: HIT_MARKER_SCALE,
       });
     }
   }
@@ -290,8 +295,8 @@ export class VFX {
     }
     marker.mesh.scale.setScalar(0.4 * marker.baseScale);
     marker.ring.scale.setScalar(0.4 * marker.baseScale);
-    marker.mat.opacity = 1;
-    marker.ringMat.opacity = 0.8;
+    marker.mat.opacity = HIT_MARKER_OPACITY;
+    marker.ringMat.opacity = HIT_MARKER_RING_OPACITY;
     marker.mesh.visible = true;
     marker.ring.visible = true;
     marker.life = 0.28;
@@ -555,15 +560,15 @@ export class VFX {
 
       // Opacity: stay solid until 65%, then rapid fade out
       if (progress < 0.65) {
-        hm.mat.opacity = 1;
+        hm.mat.opacity = HIT_MARKER_OPACITY;
       } else {
-        hm.mat.opacity = Math.max(0, 1 - (progress - 0.65) / 0.35);
+        hm.mat.opacity = HIT_MARKER_OPACITY * Math.max(0, 1 - (progress - 0.65) / 0.35);
       }
 
       // Expanding comic shock ring
       const ringScale = (0.4 + progress * 2.8) * hm.baseScale;
       hm.ring.scale.setScalar(ringScale);
-      hm.ringMat.opacity = Math.max(0, 0.85 * (1 - progress));
+      hm.ringMat.opacity = HIT_MARKER_RING_OPACITY * Math.max(0, 1 - progress);
     }
 
     // ─── Update Existing Particles ────────────────────────────────────
