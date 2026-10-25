@@ -87,6 +87,11 @@ export interface GameFullMsg {
   type: 'gameFull';
 }
 
+/** This laptop's seat was taken over by a newer tab in the same browser */
+export interface ReplacedMsg {
+  type: 'replaced';
+}
+
 export interface InvalidTokenMsg {
   type: 'invalidToken';
 }
@@ -241,4 +246,6 @@ export type ServerToPlayerMsg =
   | GameStateMsg
   | SnapshotMsg
   | RoundResultMsg
-  | MatchResultMsg;
+  | MatchResultMsg
+  | GameFullMsg
+  | ReplacedMsg;

@@ -2,7 +2,7 @@ import express from 'express';
 import { createServer as createHttpServer } from 'http';
 import { createServer as createHttpsServer } from 'https';
 import { readFileSync, existsSync } from 'fs';
-import { WebSocketServer } from 'ws';
+import { WebSocketServer, type WebSocket } from 'ws';
 import { createServer as createViteServer } from 'vite';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -19,6 +19,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '../..');
 const PORT = Number(process.env.PORT) || 3000;
 const HTTPS_PORT = Number(process.env.HTTPS_PORT) || 3443;
+const HEARTBEAT_MS = 5000;
 
 function getLanIP(): string {
   const nets = networkInterfaces();
@@ -129,18 +130,42 @@ async function main() {
   server.on('upgrade', handleUpgrade);
   if (httpsServer) httpsServer.on('upgrade', handleUpgrade);
 
+  // A laptop that sleeps or drops off Wi-Fi never sends a close, so its slot
+  // would stay taken forever. Ping everyone and drop sockets that stop answering.
+  const alive = new WeakMap<WebSocket, boolean>();
+  const heartbeat = setInterval(() => {
+    for (const client of wss.clients) {
+      if (alive.get(client) === false) {
+        client.terminate();
+        continue;
+      }
+      alive.set(client, false);
+      client.ping();
+    }
+  }, HEARTBEAT_MS);
+  wss.on('close', () => clearInterval(heartbeat));
+
   wss.on('connection', (ws, req) => {
+    alive.set(ws, true);
+    ws.on('pong', () => alive.set(ws, true));
     const host = req.headers.host || 'localhost';
     const url = new URL(req.url || '/', `http://${host}`);
     const role = url.searchParams.get('role');
 
     if (role === 'player') {
       // ─── Player laptop connection ──────────────────────────────────
-      const result = session.playerJoin(ws);
+      const laptopId = url.searchParams.get('id')?.slice(0, 64) || null;
+      const result = session.playerJoin(ws, laptopId);
       if (!result) {
+        console.log('[ws] Laptop turned away: both player slots are taken');
         ws.send(JSON.stringify({ type: 'gameFull' }));
         ws.close();
         return;
+      }
+      if (result.replaced) {
+        console.log(`[ws] Laptop for P${result.slot} reconnected from the same browser; dropping its old tab`);
+        result.replaced.send(JSON.stringify({ type: 'replaced' }));
+        result.replaced.close();
       }
 
       const lanIP = getLanIP();
@@ -198,7 +223,8 @@ async function main() {
       });
 
       ws.on('close', () => {
-        session.playerDisconnect(ws);
+        // A tab replaced by the same browser doesn't count as the laptop leaving
+        if (!session.playerDisconnect(ws)) return;
         // A laptop left: the match can't continue, so don't strand the next joiner mid-session
         if (game.getState() !== 'lobby') game.resetToLobby();
       });

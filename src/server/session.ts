@@ -20,6 +20,8 @@ interface PlayerConnection {
 interface SlotInfo {
   token: PlayerToken;
   player: PlayerConnection | null;   // laptop
+  /** Browser that owns the laptop seat, so a reload or second tab can't take the other seat */
+  laptopId: string | null;
   controller: PlayerConnection | null; // phone
   controllerId: PlayerId | null;
 }
@@ -28,33 +30,49 @@ export class GameSession {
   private slots: Map<PlayerSlot, SlotInfo> = new Map();
 
   constructor() {
-    this.slots.set(1, { token: this.genToken(), player: null, controller: null, controllerId: null });
-    this.slots.set(2, { token: this.genToken(), player: null, controller: null, controllerId: null });
+    this.slots.set(1, { token: this.genToken(), player: null, laptopId: null, controller: null, controllerId: null });
+    this.slots.set(2, { token: this.genToken(), player: null, laptopId: null, controller: null, controllerId: null });
   }
 
   // ─── Laptop (player) connections ──────────────────────────────────
 
-  /** Laptop connects — assign to first open slot. Returns slot + token or null. */
-  playerJoin(ws: WebSocket): { slot: PlayerSlot; token: PlayerToken } | null {
+  /**
+   * Laptop connects. A browser that already holds a seat takes it back (its old socket is
+   * kicked and the token is kept, so the paired phone stays paired). Otherwise it gets
+   * the first open seat. Returns null when the game is full.
+   */
+  playerJoin(ws: WebSocket, laptopId: string | null):
+    { slot: PlayerSlot; token: PlayerToken; replaced: WebSocket | null } | null {
+    if (laptopId) {
+      for (const [slot, info] of this.slots) {
+        if (info.laptopId === laptopId && info.player) {
+          const replaced = info.player.ws;
+          info.player = { ws };
+          return { slot, token: info.token, replaced };
+        }
+      }
+    }
     for (const [slot, info] of this.slots) {
-      if (!info.player) {
+      if (!info.player || !isOpen(info.player.ws)) {
         info.player = { ws };
-        return { slot, token: info.token };
+        info.laptopId = laptopId;
+        return { slot, token: info.token, replaced: null };
       }
     }
     return null;
   }
 
-  playerDisconnect(ws: WebSocket): void {
-    for (const [slot, info] of this.slots) {
+  /** Returns true if this socket still owned a seat (false if it was already replaced). */
+  playerDisconnect(ws: WebSocket): boolean {
+    for (const [, info] of this.slots) {
       if (info.player?.ws === ws) {
         info.player = null;
-        // Don't free the slot immediately — allow reconnect
-        // For now, free it (players can rejoin)
+        info.laptopId = null;
         info.token = this.genToken(); // new token on reconnect
-        break;
+        return true;
       }
     }
+    return false;
   }
 
   // ─── Phone (controller) connections ───────────────────────────────
@@ -153,7 +171,7 @@ export class GameSession {
   bothPlayersConnected(): boolean {
     const s1 = this.slots.get(1)!;
     const s2 = this.slots.get(2)!;
-    return !!(s1.player && s2.player);
+    return !!(s1.player && s2.player && isOpen(s1.player.ws) && isOpen(s2.player.ws));
   }
 
   /** Check if both controllers are connected */
@@ -170,4 +188,8 @@ export class GameSession {
   private genToken(): PlayerToken {
     return crypto.randomBytes(8).toString('hex');
   }
+}
+
+function isOpen(ws: WebSocket): boolean {
+  return ws.readyState === 1;
 }
