@@ -150,6 +150,9 @@ async function main() {
       // If both players now connected, start class select
       if (session.bothPlayersConnected() && game.getState() === 'lobby') {
         game.startClassSelect();
+      } else if (game.getState() !== 'lobby') {
+        // Rejoining (e.g. page reload) mid-session: sync to where the game already is
+        ws.send(JSON.stringify({ type: 'gameState', state: game.getState() }));
       }
 
       ws.on('message', (data) => {

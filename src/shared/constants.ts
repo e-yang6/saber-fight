@@ -25,7 +25,7 @@ export const FIGHTER_START_DISTANCE = 0.9; // distance from center for each figh
 export const IDEAL_FIGHT_DISTANCE = 1.8; // target distance between fighters (auto-advance)
 export const MIN_FIGHT_DISTANCE = 1.0; // don't let fighters overlap
 export const AUTO_ADVANCE_SPEED = 2.0; // m/s fighters close the gap
-export const FALL_THRESHOLD = -2.0; // Y position below which player has fallen off
+export const WATER_LEVEL = -8.0; // bay surface below the platform; touching it loses the round
 
 // ─── Match ──────────────────────────────────────────────────────────
 

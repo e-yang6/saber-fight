@@ -156,4 +156,8 @@ src/
 - **Client:** Vite + Three.js (vanilla TypeScript, no framework)
 - **3D:** Three.js with UnrealBloomPass for saber glow
 - **Head tracking:** MediaPipe Face Landmarker (optional, feature-flagged)
-- **No external assets** — all characters built from primitives, all audio procedural
+- **Assets** — characters, the SF skyline, and all audio are procedural; the only external asset is the Golden Gate Bridge model below
+
+## Credits
+
+- [Golden Gate bridge](https://poly.pizza/m/a648BwpXx-A) by Steren Giannini, licensed [CC-BY 3.0](https://creativecommons.org/licenses/by/3.0/), via Poly Pizza (`src/client/public/models/golden-gate.glb`; its built-in water slab is hidden at load)

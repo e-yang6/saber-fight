@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { WATER_LEVEL } from '@shared/constants.js';
 
 interface Particle {
   mesh: THREE.Mesh;
@@ -163,7 +164,7 @@ export class VFX {
 
   /** Splash when a fighter falls into the water */
   spawnSplash(position: THREE.Vector3): void {
-    const waterY = -8;
+    const waterY = WATER_LEVEL;
     for (let i = 0; i < 40; i++) {
       const mesh = this.getPooledSpark();
       if (!mesh) break;

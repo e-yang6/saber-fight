@@ -9,7 +9,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import type { PlayerSlot, SnapshotMsg, FighterSnapshot, GameEvent, ClassName } from '@shared/protocol.js';
 import { BODY_CAPSULE_HEIGHT, BODY_CAPSULE_RADIUS, HEAD_RADIUS } from '@shared/constants.js';
-import { createArena } from './Arena.js';
+import { createArena, SKY_HORIZON_COLOR } from './Arena.js';
 import { Fighter } from './Fighter.js';
 import { Saber } from './Saber.js';
 import { VFX } from './VFX.js';
@@ -73,17 +73,19 @@ export class GameRenderer {
 
     // ─── Scene ───────────────────────────────────────────────────────
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.FogExp2(0x112233, 0.015);
+    this.scene.background = new THREE.Color(SKY_HORIZON_COLOR);
+    this.scene.fog = new THREE.FogExp2(SKY_HORIZON_COLOR, 0.0025);
 
     // ─── Camera (first-person) ───────────────────────────────────────
-    this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 200);
+    this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1200);
 
     // ─── Bloom ──────────────────────────────────────────────────────
+    // High threshold: in daylight only the saber cores/glows should bloom, not the sky
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.composer.addPass(new UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
-      1.5, 0.4, 0.2,
+      1.2, 0.4, 0.85,
     ));
 
     // ─── Arena ──────────────────────────────────────────────────────
