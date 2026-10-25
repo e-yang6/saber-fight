@@ -53,7 +53,7 @@
 
   <div id="combo"><span id="combo-count">0</span> COMBO</div>
 
-  <div id="power">
+  <button id="power" type="button" aria-label="Power Ability" title="Power Ability (E)">
     <svg id="power-icon" viewBox="0 0 24 24" aria-hidden="true">
       <defs>
         <path id="power-bolt" d="M13.5 1.5 4 13.5h6.5L9 22.5l10-12.5h-6.5z" />
@@ -67,7 +67,8 @@
       <use href="#power-bolt" class="power-full" clip-path="url(#power-clip)" />
       <use href="#power-bolt" class="power-outline" />
     </svg>
-  </div>
+    <span class="power-key-badge">E</span>
+  </button>
 
   <div id="overlay" style="display:none">
     <div id="overlay-content">

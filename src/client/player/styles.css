@@ -141,24 +141,142 @@ h1 { font-weight: normal; font-size: 32px; }
   }
 }
 
-/* Power cooldown: an energy bolt that fills bottom-to-top as the power recharges */
+/* Power cooldown button: mobile-style action button ring with charging energy bolt */
 #power {
-  position: absolute; left: 24px; bottom: 48px; z-index: 6;
+  position: absolute;
+  left: 25%;
+  top: 75%;
+  transform: translate(-50%, -50%);
+  z-index: 6;
   display: none;
+  width: 192px;
+  height: 192px;
+  border-radius: 50%;
+  padding: 0;
+  margin: 0;
+  border: 5px solid rgba(255, 255, 255, 0.45);
+  background: radial-gradient(circle at 50% 35%, rgba(28, 38, 58, 0.88) 0%, rgba(10, 14, 26, 0.96) 100%);
+  box-shadow:
+    0 0 0 6px rgba(10, 14, 26, 0.8),
+    0 12px 32px rgba(0, 0, 0, 0.65),
+    inset 0 3px 8px rgba(255, 255, 255, 0.28),
+    inset 0 -6px 14px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+  pointer-events: auto;
+  user-select: none;
+  outline: none;
+  transition: transform 0.12s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+#power.show {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Inner concentric ring track */
+#power::before {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  border-radius: 50%;
+  border: 2px dashed rgba(255, 255, 255, 0.25);
+  pointer-events: none;
+  transition: border-color 0.2s ease, border-style 0.2s ease;
+}
+
+#power:active {
+  transform: translate(-50%, -50%) scale(0.94);
+  box-shadow:
+    0 0 0 4px rgba(10, 14, 26, 0.85),
+    0 4px 14px rgba(0, 0, 0, 0.6),
+    inset 0 4px 10px rgba(0, 0, 0, 0.7);
+}
+
+#power-icon {
+  width: 136px;
+  height: 136px;
+  display: block;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5));
   pointer-events: none;
 }
-#power.show { display: block; }
-#power-icon {
-  width: 64px; height: 64px; display: block;
-  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
-}
-#power-icon .power-empty { fill: rgba(10,14,28,0.55); }
+
+#power-icon .power-empty { fill: rgba(10, 14, 28, 0.55); }
 #power-icon .power-full { fill: url(#power-grad); }
 #power-icon .power-outline {
-  fill: none; stroke: rgba(255,255,255,0.75); stroke-width: 1.2; stroke-linejoin: round;
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.8);
+  stroke-width: 1.2;
+  stroke-linejoin: round;
 }
-#power.ready #power-icon { filter: drop-shadow(0 0 8px rgba(255,210,58,0.9)); }
-#power.ready #power-icon .power-outline { stroke: #fff6cc; }
+
+/* Ready state: golden glowing mobile button ring */
+#power.ready {
+  border-color: #ffd23a;
+  box-shadow:
+    0 0 0 6px rgba(251, 191, 36, 0.45),
+    0 0 32px rgba(255, 210, 58, 0.85),
+    inset 0 0 22px rgba(255, 210, 58, 0.35);
+  animation: power-ring-pulse 1.8s ease-in-out infinite;
+}
+
+#power.ready::before {
+  border-color: rgba(255, 230, 100, 0.65);
+  border-style: solid;
+}
+
+#power.ready #power-icon {
+  filter: drop-shadow(0 0 14px rgba(255, 210, 58, 0.95));
+}
+
+#power.ready #power-icon .power-outline {
+  stroke: #fff6cc;
+}
+
+@keyframes power-ring-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 6px rgba(251, 191, 36, 0.45),
+      0 0 30px rgba(255, 210, 58, 0.75),
+      inset 0 0 20px rgba(255, 210, 58, 0.3);
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    box-shadow:
+      0 0 0 9px rgba(251, 191, 36, 0.7),
+      0 0 48px rgba(255, 210, 58, 0.95),
+      inset 0 0 28px rgba(255, 210, 58, 0.45);
+    transform: translate(-50%, -50%) scale(1.03);
+  }
+}
+
+/* Keyboard hint badge (E) on the button */
+.power-key-badge {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #1e293b;
+  border: 2px solid #64748b;
+  color: #f8fafc;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+#power.ready .power-key-badge {
+  background: #f59e0b;
+  border-color: #fef08a;
+  color: #1a0f00;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.8);
+}
 
 #overlay {
   position: absolute; inset: 0; z-index: 20;
