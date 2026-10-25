@@ -447,3 +447,100 @@ export function playDefeatSound(): void {
   }
 }
 
+/** Bright, energetic ascending fanfare chime when winning a round */
+export function playRoundWinSound(): void {
+  const c = getCtx();
+  const now = c.currentTime;
+
+  // Energetic 4-note ascending major arpeggio with celebratory bell shimmer
+  const notes = [
+    { freq: 440.0, time: 0.0, dur: 0.13 },    // A4
+    { freq: 554.37, time: 0.10, dur: 0.13 },  // C#5
+    { freq: 659.25, time: 0.20, dur: 0.16 },  // E5
+    { freq: 880.0, time: 0.32, dur: 0.55 },   // A5
+  ];
+
+  for (const n of notes) {
+    const t = now + n.time;
+    const osc1 = c.createOscillator();
+    osc1.type = 'triangle';
+    osc1.frequency.setValueAtTime(n.freq, t);
+
+    // Warm second harmonic for brassy arcade punch
+    const osc2 = c.createOscillator();
+    osc2.type = 'sawtooth';
+    osc2.frequency.setValueAtTime(n.freq * 1.003, t);
+
+    const filter = c.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(2600, t);
+    filter.frequency.exponentialRampToValueAtTime(900, t + n.dur);
+
+    const gain = c.createGain();
+    gain.gain.setValueAtTime(0.001, t);
+    gain.gain.linearRampToValueAtTime(0.24, t + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + n.dur);
+
+    osc1.connect(filter);
+    osc2.connect(filter);
+    filter.connect(gain);
+    gain.connect(masterGain);
+
+    osc1.start(t);
+    osc2.start(t);
+    osc1.stop(t + n.dur);
+    osc2.stop(t + n.dur);
+  }
+}
+
+/** Gentle, muted downward chime indicating round lost without being harsh */
+export function playRoundLoseSound(): void {
+  const c = getCtx();
+  const now = c.currentTime;
+
+  const notes = [
+    { freq: 392.00, time: 0.0, dur: 0.28 },   // G4
+    { freq: 329.63, time: 0.22, dur: 0.45 },  // E4
+  ];
+
+  for (const n of notes) {
+    const t = now + n.time;
+    const osc = c.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(n.freq, t);
+    osc.frequency.linearRampToValueAtTime(n.freq * 0.97, t + n.dur);
+
+    const gain = c.createGain();
+    gain.gain.setValueAtTime(0.001, t);
+    gain.gain.linearRampToValueAtTime(0.14, t + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + n.dur);
+
+    osc.connect(gain);
+    gain.connect(masterGain);
+
+    osc.start(t);
+    osc.stop(t + n.dur);
+  }
+}
+
+/** Crisp percussive point counter tick chime */
+export function playScoreTickSound(): void {
+  const c = getCtx();
+  const now = c.currentTime;
+
+  const osc = c.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(987.77, now); // B5
+  osc.frequency.exponentialRampToValueAtTime(1318.51, now + 0.12); // E6
+
+  const gain = c.createGain();
+  gain.gain.setValueAtTime(0.18, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+
+  osc.connect(gain);
+  gain.connect(masterGain);
+
+  osc.start(now);
+  osc.stop(now + 0.18);
+}
+

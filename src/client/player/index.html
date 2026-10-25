@@ -78,6 +78,51 @@
       <div id="overlay-score" style="display:none"></div>
       <button id="overlay-btn" style="display:none">Rematch</button>
     </div>
+
+    <!-- Satisfying Round Result Overlay -->
+    <div id="round-card" class="round-card" style="display:none">
+      <div id="round-particles" class="round-particles"></div>
+      <div class="round-kicker" id="round-kicker">ROUND 1 COMPLETE</div>
+      <h1 class="round-title" id="round-title">ROUND WON!</h1>
+      <p class="round-subtitle" id="round-subtitle">POINT SCORED</p>
+
+      <!-- Scoreboard with Point Pop and Pips -->
+      <div class="round-scoreboard" id="round-scoreboard">
+        <!-- Player 1 Box -->
+        <div class="round-player-box" id="round-box-p1">
+          <div class="point-popup" id="point-popup-p1">+1 POINT</div>
+          <div class="round-player-meta">
+            <span class="round-player-name" id="round-p1-label">YOU</span>
+            <span class="round-player-tag">P1</span>
+          </div>
+          <div class="round-score-digit" id="round-p1-num">0</div>
+          <div class="round-pips-row" id="round-p1-pips">
+            <span class="pip-circle" data-pip="0"></span>
+            <span class="pip-circle" data-pip="1"></span>
+          </div>
+        </div>
+
+        <div class="round-vs-divider">
+          <span class="round-vs-text">VS</span>
+        </div>
+
+        <!-- Player 2 Box -->
+        <div class="round-player-box" id="round-box-p2">
+          <div class="point-popup" id="point-popup-p2">+1 POINT</div>
+          <div class="round-player-meta">
+            <span class="round-player-name" id="round-p2-label">OPPONENT</span>
+            <span class="round-player-tag">P2</span>
+          </div>
+          <div class="round-score-digit" id="round-p2-num">0</div>
+          <div class="round-pips-row" id="round-p2-pips">
+            <span class="pip-circle" data-pip="0"></span>
+            <span class="pip-circle" data-pip="1"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="round-status-banner" id="round-status-banner">PREPARE FOR ROUND 2</div>
+    </div>
   </div>
 
   <div id="debug-bar" style="display:none">
