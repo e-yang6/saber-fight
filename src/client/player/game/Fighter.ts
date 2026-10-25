@@ -7,7 +7,17 @@ import * as THREE from 'three';
 import type { PlayerSlot, FighterSnapshot } from '@shared/protocol.js';
 import { SABER_COLORS } from '@shared/classes.js';
 import { Saber } from './Saber.js';
-import { BODY_CAPSULE_RADIUS, BODY_CAPSULE_HEIGHT, HEAD_RADIUS } from '@shared/constants.js';
+
+interface NaiLongPalette { body: number; belly: number; accent: number }
+
+/** One colour scheme per player so the two Nai Longs are easy to tell apart */
+const NAI_LONG_PALETTES: Record<PlayerSlot, NaiLongPalette> = {
+  1: { body: 0xffd23f, belly: 0xfff2c2, accent: 0xf0a92a }, // classic yellow
+  2: { body: 0x7cc8ff, belly: 0xe2f3ff, accent: 0x4a93d9 }, // sky blue
+};
+
+/** Body-local hand position: just in front of the belly, close to the server's hilt point */
+const HAND_POS = new THREE.Vector3(0.14, 0.86, 0.4);
 
 export class Fighter {
   readonly group = new THREE.Group();
@@ -25,85 +35,86 @@ export class Fighter {
 
   constructor(slot: PlayerSlot) {
     this.slot = slot;
+    this.buildNaiLong(NAI_LONG_PALETTES[slot]);
 
-    const skinColor = slot === 1 ? 0xffccaa : 0xccaa88;
-    const shirtColor = slot === 1 ? 0x336699 : 0x993333;
-
-    // Torso
-    const torsoGeo = new THREE.CapsuleGeometry(BODY_CAPSULE_RADIUS, BODY_CAPSULE_HEIGHT, 4, 8);
-    const torsoMat = new THREE.MeshStandardMaterial({ color: shirtColor, roughness: 0.7 });
-    const torso = new THREE.Mesh(torsoGeo, torsoMat);
-    torso.position.y = BODY_CAPSULE_HEIGHT / 2 + BODY_CAPSULE_RADIUS;
-    torso.castShadow = true;
-    this.group.add(torso);
-
-    // Head
-    const headGeo = new THREE.SphereGeometry(HEAD_RADIUS, 12, 12);
-    const headMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.6 });
-    const head = new THREE.Mesh(headGeo, headMat);
-    head.position.y = BODY_CAPSULE_HEIGHT + BODY_CAPSULE_RADIUS * 2 + HEAD_RADIUS * 0.8;
-    head.castShadow = true;
-    this.group.add(head);
-
-    // Eyes
-    const eyeGeo = new THREE.SphereGeometry(0.03, 6, 6);
-    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
-    const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
-    leftEye.position.set(-0.06, 0.03, HEAD_RADIUS * 0.9);
-    head.add(leftEye);
-    const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
-    rightEye.position.set(0.06, 0.03, HEAD_RADIUS * 0.9);
-    head.add(rightEye);
-
-    // Legs
-    const legGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.6, 6);
-    const legMat = new THREE.MeshStandardMaterial({ color: 0x444455, roughness: 0.8 });
-    const leftLeg = new THREE.Mesh(legGeo, legMat);
-    leftLeg.position.set(-0.12, 0.3, 0);
-    leftLeg.castShadow = true;
-    this.group.add(leftLeg);
-    const rightLeg = new THREE.Mesh(legGeo, legMat);
-    rightLeg.position.set(0.12, 0.3, 0);
-    rightLeg.castShadow = true;
-    this.group.add(rightLeg);
-
-    // Arm + Saber (always on right side in body-local space)
-    const armMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.6 });
-    const armGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.35, 6);
-    const upperArm = new THREE.Mesh(armGeo, armMat);
-    upperArm.castShadow = true;
-    this.armGroup.add(upperArm);
-    const forearm = new THREE.Mesh(armGeo, armMat);
-    forearm.position.y = -0.35;
-    forearm.castShadow = true;
-    this.armGroup.add(forearm);
-    this.armGroup.position.set(
-      BODY_CAPSULE_RADIUS + 0.05,
-      BODY_CAPSULE_HEIGHT + BODY_CAPSULE_RADIUS,
-      0,
-    );
+    // Saber pivots at the hand, near where the server places the hilt for collision
+    this.armGroup.position.copy(HAND_POS);
     this.group.add(this.armGroup);
-
     this.saber = new Saber();
     this.armGroup.add(this.saber.group);
-    this.saber.group.position.y = -0.7;
+  }
 
-    // Off-hand arm (static)
-    const offArm = new THREE.Group();
-    const offUpper = new THREE.Mesh(armGeo, armMat);
-    offUpper.castShadow = true;
-    offArm.add(offUpper);
-    const offFore = new THREE.Mesh(armGeo, armMat);
-    offFore.position.y = -0.35;
-    offFore.castShadow = true;
-    offArm.add(offFore);
-    offArm.position.set(
-      -(BODY_CAPSULE_RADIUS + 0.05),
-      BODY_CAPSULE_HEIGHT + BODY_CAPSULE_RADIUS,
-      0,
-    );
-    offArm.rotation.x = 0.3;
-    this.group.add(offArm);
+  /**
+   * Nai Long: a chubby round dragon with a cream belly, big shiny eyes, a wide open smile,
+   * rosy cheeks, stubby limbs and a little tail. Built from primitives; faces +Z.
+   * Wider than the collision capsule (radius BODY_CAPSULE_RADIUS) for the chubby look.
+   */
+  private buildNaiLong(p: NaiLongPalette): void {
+    const skin = new THREE.MeshStandardMaterial({ color: p.body, roughness: 0.55 });
+    const belly = new THREE.MeshStandardMaterial({ color: p.belly, roughness: 0.6 });
+    const accent = new THREE.MeshStandardMaterial({ color: p.accent, roughness: 0.6 });
+    const black = new THREE.MeshStandardMaterial({ color: 0x15110e, roughness: 0.2 });
+    const white = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const mouthMat = new THREE.MeshStandardMaterial({ color: 0x8a1f24, roughness: 0.5 });
+    const tongueMat = new THREE.MeshStandardMaterial({ color: 0xff7a8a, roughness: 0.5 });
+    const cheekMat = new THREE.MeshStandardMaterial({
+      color: 0xff8fa3, roughness: 0.8, transparent: true, opacity: 0.85,
+    });
+    const sphere = new THREE.SphereGeometry(1, 24, 16);
+
+    const blob = (
+      mat: THREE.Material, pos: [number, number, number], scale: [number, number, number],
+      parent: THREE.Object3D = this.group,
+    ): THREE.Mesh => {
+      const m = new THREE.Mesh(sphere, mat);
+      m.position.set(...pos);
+      m.scale.set(...scale);
+      m.castShadow = true;
+      parent.add(m);
+      return m;
+    };
+
+    // One soft pear-shaped body: wide bottom, big round head on top
+    blob(skin, [0, 0.62, 0], [0.42, 0.56, 0.4]);
+    blob(skin, [0, 1.24, 0.02], [0.36, 0.34, 0.34]);
+    blob(belly, [0, 0.6, 0.2], [0.3, 0.4, 0.23]);
+    blob(belly, [0, 1.13, 0.22], [0.2, 0.12, 0.14]); // muzzle
+
+    // Big glossy eyes with highlights
+    for (const side of [-1, 1]) {
+      const eye = blob(black, [side * 0.13, 1.33, 0.29], [0.07, 0.09, 0.05]);
+      eye.castShadow = false;
+      blob(white, [side * 0.13 + 0.02, 1.37, 0.33], [0.022, 0.026, 0.01]).castShadow = false;
+      blob(white, [side * 0.13 - 0.02, 1.3, 0.335], [0.01, 0.012, 0.006]).castShadow = false;
+      blob(cheekMat, [side * 0.24, 1.2, 0.25], [0.06, 0.035, 0.03]).castShadow = false;
+    }
+
+    // Wide open smile with a tongue
+    blob(mouthMat, [0, 1.11, 0.33], [0.11, 0.05, 0.03]).castShadow = false;
+    blob(tongueMat, [0, 1.095, 0.345], [0.06, 0.025, 0.02]).castShadow = false;
+
+    // Stubby feet and a short tail
+    for (const side of [-1, 1]) {
+      blob(accent, [side * 0.17, 0.06, 0.1], [0.13, 0.07, 0.17]);
+    }
+    const tail = blob(skin, [0, 0.28, -0.42], [0.12, 0.1, 0.2]);
+    tail.rotation.x = 0.5;
+
+    // Sword arm: stubby limb from the shoulder to the hand holding the hilt
+    const shoulder = new THREE.Vector3(0.3, 1.0, 0.08);
+    const limb = (from: THREE.Vector3, to: THREE.Vector3) => {
+      const len = from.distanceTo(to);
+      const m = new THREE.Mesh(new THREE.CapsuleGeometry(0.075, len, 4, 10), skin);
+      m.position.copy(from).add(to).multiplyScalar(0.5);
+      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), to.clone().sub(from).normalize());
+      m.castShadow = true;
+      this.group.add(m);
+    };
+    limb(shoulder, HAND_POS);
+    blob(skin, [HAND_POS.x, HAND_POS.y, HAND_POS.z], [0.085, 0.085, 0.085]);
+
+    // Off arm resting on the belly
+    limb(new THREE.Vector3(-0.3, 1.0, 0.08), new THREE.Vector3(-0.2, 0.78, 0.33));
   }
 
   /** Apply server snapshot. Pass opponent position so body faces them. */
