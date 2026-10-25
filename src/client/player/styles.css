@@ -1,0 +1,82 @@
+:root {
+  --bg: #000;
+  --fg: #fff;
+  --border: #444;
+  --dim: #888;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
+}
+
+.screen { display: none; position: absolute; inset: 0; flex-direction: column; align-items: center; justify-content: center; gap: 16px; z-index: 10; background: var(--bg); }
+.screen.active { display: flex; }
+
+h1 { font-weight: normal; font-size: 32px; }
+
+#qr-canvas { image-rendering: pixelated; width: 240px; height: 240px; }
+#lobby-status { font-size: 20px; }
+#lobby-url { font-size: 12px; color: var(--dim); word-break: break-all; max-width: 80%; text-align: center; }
+#controller-status { font-size: 16px; color: var(--dim); }
+
+#game-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+#hud {
+  position: absolute; top: 0; left: 0; right: 0;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 24px; z-index: 5; pointer-events: none;
+  font-size: 24px;
+}
+#hud-center { font-size: 14px; color: var(--dim); }
+
+#ability-callout {
+  position: absolute; top: 56px; left: 0; right: 0; z-index: 6;
+  text-align: center; font-size: 22px; pointer-events: none;
+  opacity: 0; transition: opacity 0.4s ease;
+}
+#ability-callout.show { opacity: 1; transition: none; }
+
+#overlay {
+  position: absolute; inset: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.6);
+  pointer-events: none;
+  transition: background 0.3s ease;
+}
+#overlay.countdown-mode {
+  background: transparent;
+}
+#overlay.countdown-mode #overlay-title {
+  font-size: 88px;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 0 25px rgba(255, 255, 255, 0.9), 0 0 50px rgba(68, 136, 255, 0.8);
+  animation: countdown-pop 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes countdown-pop {
+  0% { transform: scale(1.6); opacity: 0; }
+  25% { transform: scale(1.0); opacity: 1; }
+  80% { transform: scale(1.0); opacity: 1; }
+  100% { transform: scale(0.92); opacity: 0.6; }
+}
+#overlay-content { text-align: center; }
+#overlay-title { font-size: 48px; font-weight: normal; }
+#overlay-subtitle { font-size: 20px; color: var(--dim); margin-top: 8px; }
+#overlay-btn {
+  margin-top: 16px; padding: 12px 32px; font-size: 18px;
+  border: 1px solid var(--border); background: transparent; color: var(--fg); cursor: pointer;
+  pointer-events: auto;
+}
+
+#debug-bar {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  padding: 8px; background: rgba(0,0,0,0.8); z-index: 30;
+  font-size: 12px; color: var(--dim); text-align: center;
+}
