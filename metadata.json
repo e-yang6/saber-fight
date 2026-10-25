@@ -1,0 +1,8 @@
+{
+  "name": "Saber Fight!",
+  "description": "Multiplayer motion-controlled saber duel game with 3D combat, physics, mobile phone controller, and solo practice mode.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

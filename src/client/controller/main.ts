@@ -85,25 +85,26 @@ async function requestWakeLock() {
 // ─── iOS motion permission ──────────────────────────────────────────
 
 async function requestMotionPermission(): Promise<boolean> {
-  const DOE = DeviceOrientationEvent as unknown as {
+  const DOE = (typeof DeviceOrientationEvent !== 'undefined' ? DeviceOrientationEvent : null) as unknown as {
     requestPermission?: () => Promise<string>;
   };
-  const DME = DeviceMotionEvent as unknown as {
+  const DME = (typeof DeviceMotionEvent !== 'undefined' ? DeviceMotionEvent : null) as unknown as {
     requestPermission?: () => Promise<string>;
   };
 
   try {
-    if (DOE.requestPermission) {
+    if (DOE?.requestPermission) {
       const result = await DOE.requestPermission();
       if (result !== 'granted') return false;
     }
-    if (DME.requestPermission) {
+    if (DME?.requestPermission) {
       const result = await DME.requestPermission();
       if (result !== 'granted') return false;
     }
     return true;
   } catch {
-    return false;
+    // If not supported or errored on non-mobile devices, allow proceeding
+    return true;
   }
 }
 

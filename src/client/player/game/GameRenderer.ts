@@ -34,8 +34,20 @@ export class GameRenderer {
   // Head tracking offset for parallax
   private headOffset = new THREE.Vector3();
 
+  // Countdown intro camera animation state
+  private isCountdown = false;
+  private countdownStartTime = 0;
+  private countdownDuration = 3000;
+  private lastCountdownVal = 3;
+  private lastMyPos = new THREE.Vector3();
+  private lastOppPos = new THREE.Vector3();
+
   constructor(canvas: HTMLCanvasElement, mySlot: PlayerSlot) {
     this.mySlot = mySlot;
+
+    const initSign = mySlot === 1 ? -1 : 1;
+    this.lastMyPos.set(0, 0, initSign * 4);
+    this.lastOppPos.set(0, 0, -initSign * 4);
 
     // ─── Renderer ────────────────────────────────────────────────────
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -75,11 +87,12 @@ export class GameRenderer {
     this.scene.add(opponent.saber.trail.mesh);
     opponent.createBarrier();
 
-    // Own body — we don't render it (first person), but we need saber trail
+    // Own body — hidden in FP, visible during countdown intro
     const self = new Fighter(mySlot);
-    self.group.visible = false; // hide own body
+    self.group.visible = false;
     this.fighters.set(mySlot, self);
     this.scene.add(self.group);
+    this.scene.add(self.saber.trail.mesh);
 
     // First-person saber: rendered relative to camera
     this.fpSaber = new Saber('#4488ff');
@@ -143,27 +156,32 @@ export class GameRenderer {
     const invCamQ = this.camera.quaternion.clone().invert();
     this.fpSaberGroup.quaternion.copy(invCamQ.multiply(worldQ));
 
-    // ─── Camera: first-person from own fighter's eyes ─────────────
+    // Save latest positions
     const myPos = myFighterData.position;
-    const eyeHeight = BODY_CAPSULE_HEIGHT + BODY_CAPSULE_RADIUS * 2 + HEAD_RADIUS * 0.5;
     const oppPos = oppFighterData.position;
+    this.lastMyPos.set(myPos[0], myPos[1], myPos[2]);
+    this.lastOppPos.set(oppPos[0], oppPos[1], oppPos[2]);
 
-    // Base camera at eye level, looking toward opponent
-    const baseEye = new THREE.Vector3(myPos[0], myPos[1] + eyeHeight, myPos[2]);
-
-    // Apply head tracking parallax offset
-    baseEye.add(this.headOffset);
-
-    this.camera.position.copy(baseEye);
-    this.camera.lookAt(oppPos[0], oppPos[1] + 1.2, oppPos[2]);
-
-    // Off-axis projection for parallax (Johnny Lee style)
-    if (this.headOffset.lengthSq() > 0.0001) {
-      this.applyOffAxisProjection();
+    // Track countdown state for intro animation
+    const inCountdown = snap.state === 'countdown';
+    if (inCountdown) {
+      if (!this.isCountdown) {
+        this.isCountdown = true;
+        this.countdownStartTime = performance.now();
+        this.lastCountdownVal = snap.countdown ?? 3;
+      } else if (snap.countdown !== undefined && snap.countdown !== this.lastCountdownVal) {
+        this.lastCountdownVal = snap.countdown;
+        // Align smoothly with server countdown tick (3 -> 0s, 2 -> 1s, 1 -> 2s)
+        const expectedElapsed = Math.max(0, (3 - snap.countdown) * 1000);
+        this.countdownStartTime = performance.now() - expectedElapsed;
+      }
     } else {
-      // Reset to symmetric projection
-      this.camera.updateProjectionMatrix();
+      this.isCountdown = false;
+      this.countdownStartTime = 0;
     }
+
+    // Update camera pose
+    this.updateCamera(performance.now());
 
     // Sound: only during active gameplay (prevents spam after round end)
     const active = snap.state === 'fighting' || snap.state === 'countdown';
@@ -275,6 +293,90 @@ export class GameRenderer {
     );
   }
 
+  /** Update camera position and orientation: 360-degree crane intro or first-person */
+  private updateCamera(now: number): void {
+    const eyeHeight = BODY_CAPSULE_HEIGHT + BODY_CAPSULE_RADIUS * 2 + HEAD_RADIUS * 0.5;
+    const baseEye = new THREE.Vector3(this.lastMyPos.x, this.lastMyPos.y + eyeHeight, this.lastMyPos.z);
+    const oppHead = new THREE.Vector3(this.lastOppPos.x, this.lastOppPos.y + 1.2, this.lastOppPos.z);
+
+    const self = this.fighters.get(this.mySlot);
+
+    if (this.isCountdown && this.countdownStartTime > 0) {
+      const elapsed = (now - this.countdownStartTime) / 1000;
+      const progress = Math.min(Math.max(elapsed / (this.countdownDuration / 1000), 0), 1.0);
+
+      // Facing vector from player toward opponent (ground plane)
+      const toOpp = new THREE.Vector3().subVectors(oppHead, baseEye);
+      toOpp.y = 0;
+      if (toOpp.lengthSq() > 0.0001) toOpp.normalize();
+      else toOpp.set(0, 0, 1);
+      const facingAngle = Math.atan2(toOpp.x, toOpp.z);
+
+      // S-curve smoothstep easing
+      const easeProgress = progress * progress * (3 - 2 * progress);
+
+      // 360-degree crane orbit: sweeps around the player, finishing directly behind looking forward
+      const theta = facingAngle + Math.PI + (1.0 - easeProgress) * (Math.PI * 2);
+
+      // Radius: begins at 4.6m (framing the full fighter & platform), converges smoothly to 0 at eyes
+      const radiusEase = Math.pow(progress, 1.8);
+      const radius = THREE.MathUtils.lerp(4.6, 0.0, radiusEase);
+
+      // Height: starts elevated at crane level (eyeHeight + 2.4m), swoops down to exact eye level
+      const height = THREE.MathUtils.lerp(eyeHeight + 2.4, eyeHeight, easeProgress);
+
+      const camX = this.lastMyPos.x + radius * Math.sin(theta);
+      const camY = this.lastMyPos.y + height;
+      const camZ = this.lastMyPos.z + radius * Math.cos(theta);
+
+      // Blend head tracking parallax offset as camera arrives into the head
+      if (progress > 0.85) {
+        const headBlend = (progress - 0.85) / 0.15;
+        this.camera.position.set(
+          camX + this.headOffset.x * headBlend,
+          camY + this.headOffset.y * headBlend,
+          camZ + this.headOffset.z * headBlend,
+        );
+      } else {
+        this.camera.position.set(camX, camY, camZ);
+      }
+
+      // Look-at target: starts at arena center between combatants, converges onto opponent's chest
+      const arenaCenter = new THREE.Vector3().lerpVectors(this.lastMyPos, this.lastOppPos, 0.35);
+      arenaCenter.y += 1.2;
+      const lookTarget = new THREE.Vector3().lerpVectors(arenaCenter, oppHead, easeProgress);
+      this.camera.lookAt(lookTarget);
+
+      // Avatar & First-person saber visibility:
+      // Show full body & world saber during orbit; switch to first-person viewmodel at eye arrival
+      const isFirstPerson = progress >= 0.96;
+      if (self) self.group.visible = !isFirstPerson;
+      this.fpSaberGroup.visible = isFirstPerson;
+
+      // Subtle dynamic FOV sweep (75 to 70)
+      this.camera.fov = THREE.MathUtils.lerp(75, 70, easeProgress);
+      this.camera.updateProjectionMatrix();
+    } else {
+      // Standard First-Person Mode
+      if (self) self.group.visible = false;
+      this.fpSaberGroup.visible = true;
+
+      baseEye.add(this.headOffset);
+      this.camera.position.copy(baseEye);
+      this.camera.lookAt(oppHead.x, oppHead.y, oppHead.z);
+
+      if (this.camera.fov !== 70) {
+        this.camera.fov = 70;
+      }
+
+      if (this.headOffset.lengthSq() > 0.0001) {
+        this.applyOffAxisProjection();
+      } else {
+        this.camera.updateProjectionMatrix();
+      }
+    }
+  }
+
   private loop = (): void => {
     this.animationId = requestAnimationFrame(this.loop);
 
@@ -292,6 +394,9 @@ export class GameRenderer {
 
     // Update FP saber trail
     this.fpSaber.update(dt);
+
+    // Smooth camera updates (intro orbit or first-person)
+    this.updateCamera(now);
 
     // Screen shake
     const shake = this.vfx.getScreenShakeOffset();

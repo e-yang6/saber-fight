@@ -86,23 +86,31 @@ async function main() {
   });
   game.start();
 
-  // ─── Vite dev middleware ──────────────────────────────────────────
-  const vite = await createViteServer({
-    root: resolve(ROOT, 'src/client'),
-    server: { middlewareMode: true, hmr: { server }, allowedHosts: true },
-    resolve: {
-      alias: { '@shared': resolve(ROOT, 'src/shared') },
-    },
-    appType: 'mpa',
-  });
-  app.get('/', (_req, res) => res.redirect('/player/'));
-  app.use(vite.middlewares);
+  // ─── Vite dev middleware / static serving ────────────────────────
+  if (process.env.NODE_ENV === 'production') {
+    app.use(express.static(resolve(ROOT, 'dist/client')));
+    app.get('/', (_req, res) => res.redirect('/player/'));
+    app.get('/player/*', (_req, res) => res.sendFile(resolve(ROOT, 'dist/client/player/index.html')));
+    app.get('/controller/*', (_req, res) => res.sendFile(resolve(ROOT, 'dist/client/controller/index.html')));
+  } else {
+    const vite = await createViteServer({
+      root: resolve(ROOT, 'src/client'),
+      server: { middlewareMode: true, hmr: { server }, allowedHosts: true },
+      resolve: {
+        alias: { '@shared': resolve(ROOT, 'src/shared') },
+      },
+      appType: 'mpa',
+    });
+    app.get('/', (_req, res) => res.redirect('/player/'));
+    app.use(vite.middlewares);
+  }
 
   // ─── WebSocket server ─────────────────────────────────────────────
   const wss = new WebSocketServer({ noServer: true });
 
   function handleUpgrade(request: any, socket: Duplex, head: Buffer) {
-    const pathname = new URL(request.url || '/', `http://${request.headers.host}`).pathname;
+    const host = request.headers.host || 'localhost';
+    const pathname = new URL(request.url || '/', `http://${host}`).pathname;
     if (pathname === '/ws') {
       wss.handleUpgrade(request, socket, head, (ws) => {
         wss.emit('connection', ws, request);
@@ -114,7 +122,8 @@ async function main() {
   if (httpsServer) httpsServer.on('upgrade', handleUpgrade);
 
   wss.on('connection', (ws, req) => {
-    const url = new URL(req.url || '/', `http://${req.headers.host}`);
+    const host = req.headers.host || 'localhost';
+    const url = new URL(req.url || '/', `http://${host}`);
     const role = url.searchParams.get('role');
 
     if (role === 'player') {

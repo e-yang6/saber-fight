@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "tsx watch src/server/index.ts",
     "build": "tsc --noEmit && vite build",
-    "tunnel": "cloudflared tunnel --url http://localhost:3000",
-    "typecheck": "tsc --noEmit"
+    "tunnel": "cloudflared tunnel --protocol http2 --url http://127.0.0.1:3000",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
     "express": "^4.21.0",

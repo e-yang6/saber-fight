@@ -24,6 +24,7 @@ const lobbyStatus = document.getElementById('lobby-status')!;
 const qrCanvas = document.getElementById('qr-canvas') as HTMLCanvasElement;
 const lobbyUrl = document.getElementById('lobby-url')!;
 const controllerStatus = document.getElementById('controller-status')!;
+const btnSoloLobby = document.getElementById('btn-solo-lobby') as HTMLButtonElement | null;
 const classInfo = document.getElementById('class-info')!;
 const opponentStatus = document.getElementById('opponent-status')!;
 const hudP1Score = document.getElementById('hud-p1-score')!;
@@ -35,8 +36,20 @@ const debugBar = document.getElementById('debug-bar')!;
 
 let mySlot: PlayerSlot | null = null;
 let renderer: GameRenderer | null = null;
+let soloActive = false;
+let fakeController: FakeController | null = null;
 const isDebug = location.search.includes('debug');
 const isTest = location.search.includes('test');
+
+function activateSoloMode() {
+  if (soloActive) return;
+  soloActive = true;
+  debugBar.style.display = 'block';
+  fakeController = new FakeController();
+  fakeController.start();
+  controllerStatus.textContent = 'Solo mode active: mouse=sword, space=block, E=power';
+  send({ type: 'startSolo' });
+}
 
 // ─── Screen management ──────────────────────────────────────────────
 
@@ -59,15 +72,28 @@ function showScreen(name: 'lobby' | 'classSelect' | 'game') {
   }
 }
 
-function showOverlay(title: string, subtitle: string, showBtn = false): void {
+function showOverlay(title: string, subtitle: string, showBtn = false, isCountdown = false): void {
   overlay.style.display = 'flex';
-  overlayTitle.textContent = title;
+  if (isCountdown) {
+    overlay.classList.add('countdown-mode');
+  } else {
+    overlay.classList.remove('countdown-mode');
+  }
+  if (overlayTitle.textContent !== title) {
+    overlayTitle.textContent = title;
+    if (isCountdown) {
+      overlayTitle.style.animation = 'none';
+      void overlayTitle.offsetWidth;
+      overlayTitle.style.animation = '';
+    }
+  }
   overlaySub.textContent = subtitle;
   overlayBtn.style.display = showBtn ? 'inline-block' : 'none';
 }
 
 function hideOverlay(): void {
   overlay.style.display = 'none';
+  overlay.classList.remove('countdown-mode');
 }
 
 // ─── QR code generation ─────────────────────────────────────────────
@@ -86,7 +112,7 @@ function generateQR(token: string): void {
     margin: 2,
     color: { dark: '#ffffff', light: '#000000' },
   });
-  lobbyUrl.textContent = controllerUrl;
+  lobbyUrl.innerHTML = `<a href="${controllerUrl}" target="_blank" rel="noopener noreferrer" style="color: #64b5f6; text-decoration: underline;">${controllerUrl}</a>`;
 }
 
 // ─── Game state handling ────────────────────────────────────────────
@@ -169,8 +195,8 @@ function handleMessage(msg: ServerToPlayerMsg): void {
 
     case 'gameState':
       handleGameState(msg.state);
-      // In debug mode (keyboard), auto-ready since there's no phone to pick class
-      if (isDebug && msg.state === 'classSelect') {
+      // In debug or solo mode (keyboard), auto-ready since there's no phone to pick class
+      if ((isDebug || soloActive) && msg.state === 'classSelect') {
         send({ type: 'ready' });
       }
       break;
@@ -187,7 +213,7 @@ function handleMessage(msg: ServerToPlayerMsg): void {
 
         // Show countdown
         if (msg.state === 'countdown' && msg.countdown !== undefined) {
-          showOverlay(String(msg.countdown), '');
+          showOverlay(String(msg.countdown), '', false, true);
         } else if (msg.state === 'fighting') {
           hideOverlay();
         }
@@ -217,11 +243,17 @@ function handleMessage(msg: ServerToPlayerMsg): void {
 
 // ─── Init ───────────────────────────────────────────────────────────
 
+if (btnSoloLobby) {
+  btnSoloLobby.addEventListener('click', () => {
+    activateSoloMode();
+  });
+}
+
 overlayBtn.addEventListener('click', () => {
   send({ type: 'rematch' });
   hideOverlay();
-  // In debug mode (keyboard), re-ready after rematch
-  if (isDebug) {
+  // In debug or solo mode (keyboard), re-ready after rematch
+  if (isDebug || soloActive) {
     setTimeout(() => send({ type: 'ready' }), 200);
   }
 });
