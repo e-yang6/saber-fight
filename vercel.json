@@ -1,0 +1,9 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist/client",
+  "redirects": [
+    { "source": "/", "destination": "/player/", "permanent": false },
+    { "source": "/player", "destination": "/player/", "permanent": false },
+    { "source": "/controller", "destination": "/controller/", "permanent": false }
+  ]
+}
