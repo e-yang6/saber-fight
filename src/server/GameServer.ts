@@ -195,6 +195,7 @@ export class GameServer {
   private hitstopUntil = 0;
   private slowmoUntil = 0;
   private roundEndTimeout: ReturnType<typeof setTimeout> | null = null;
+  private countdownTimer: ReturnType<typeof setTimeout> | null = null;
   private tickInterval: ReturnType<typeof setInterval> | null = null;
   private lastTick = 0;
   private events: GameEvent[] = [];
@@ -308,6 +309,23 @@ export class GameServer {
     this.setState('classSelect');
   }
 
+  /** Abandon the current session (a laptop left) and wait for players again */
+  resetToLobby(): void {
+    if (this.roundEndTimeout) clearTimeout(this.roundEndTimeout);
+    if (this.countdownTimer) clearTimeout(this.countdownTimer);
+    this.roundEndTimeout = null;
+    this.countdownTimer = null;
+    this.soloMode = false;
+    this.scores = [0, 0];
+    this.round = 0;
+    for (const f of this.fighters.values()) {
+      f.ready = false;
+      f.blocking = false;
+      f.resetPosition();
+    }
+    this.setState('lobby');
+  }
+
   private setState(state: GameState): void {
     this.state = state;
     this.cb.broadcastGameState(state);
@@ -326,12 +344,13 @@ export class GameServer {
     const tick = () => {
       this.countdown--;
       if (this.countdown > 0) {
-        setTimeout(tick, 1000);
+        this.countdownTimer = setTimeout(tick, 1000);
       } else {
+        this.countdownTimer = null;
         this.setState('fighting');
       }
     };
-    setTimeout(tick, 1000);
+    this.countdownTimer = setTimeout(tick, 1000);
   }
 
   // ─── Game tick ────────────────────────────────────────────────────

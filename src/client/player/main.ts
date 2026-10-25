@@ -37,6 +37,8 @@ const debugBar = document.getElementById('debug-bar')!;
 let mySlot: PlayerSlot | null = null;
 let renderer: GameRenderer | null = null;
 let soloActive = false;
+let myControllerConnected = false;
+let currentState: GameState = 'lobby';
 let fakeController: FakeController | null = null;
 const isDebug = location.search.includes('debug');
 const isTest = location.search.includes('test');
@@ -118,12 +120,19 @@ function generateQR(token: string): void {
 // ─── Game state handling ────────────────────────────────────────────
 
 function handleGameState(state: GameState): void {
+  currentState = state;
   hideOverlay();
   switch (state) {
     case 'lobby':
       showScreen('lobby');
       break;
     case 'classSelect':
+      // Class is picked on the phone, so keep the QR up until this player's phone is linked
+      if (!myControllerConnected && !isDebug && !soloActive) {
+        showScreen('lobby');
+        controllerStatus.textContent = 'Scan the QR code with your phone to pick your class';
+        break;
+      }
       showScreen('classSelect');
       classInfo.textContent = 'Select your class on your phone controller';
       break;
@@ -187,9 +196,11 @@ function handleMessage(msg: ServerToPlayerMsg): void {
 
     case 'controllerConnected':
       if (msg.slot === mySlot) {
+        myControllerConnected = msg.connected;
         controllerStatus.textContent = msg.connected
           ? 'Controller connected!'
           : 'Controller disconnected. Reconnecting...';
+        if (msg.connected && currentState === 'classSelect') handleGameState('classSelect');
       }
       break;
 

@@ -196,7 +196,11 @@ async function main() {
         } catch { /* ignore */ }
       });
 
-      ws.on('close', () => session.playerDisconnect(ws));
+      ws.on('close', () => {
+        session.playerDisconnect(ws);
+        // A laptop left: the match can't continue, so don't strand the next joiner mid-session
+        if (game.getState() !== 'lobby') game.resetToLobby();
+      });
 
     } else if (role === 'controller') {
       // ─── Phone controller connection ───────────────────────────────
