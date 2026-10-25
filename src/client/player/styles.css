@@ -102,16 +102,16 @@ h1 { font-weight: normal; font-size: 32px; }
 #combo {
   position: absolute; bottom: 56px; left: 50%; z-index: 6;
   transform: translateX(-50%);
-  font-size: 28px; font-weight: 700; letter-spacing: 2px;
-  color: #fff; text-shadow: 0 2px 6px rgba(0,0,0,0.6);
+  font-size: 96px; font-weight: 800; letter-spacing: 4px;
+  color: #fff; text-shadow: 0 4px 14px rgba(0,0,0,0.7), 0 2px 6px rgba(0,0,0,0.9);
   pointer-events: none; white-space: nowrap;
   opacity: 0; transition: opacity 0.3s ease;
 }
 #combo.show { opacity: 1; }
-#combo-count { display: inline-block; font-size: 40px; }
+#combo-count { display: inline-block; font-size: 140px; font-weight: 900; }
 #combo.bump #combo-count { animation: combo-bump 0.25s ease-out; }
 @keyframes combo-bump {
-  0% { transform: scale(1.6); }
+  0% { transform: scale(1.35); }
   100% { transform: scale(1); }
 }
 
@@ -123,21 +123,21 @@ h1 { font-weight: normal; font-size: 32px; }
 @keyframes combo-fire {
   0% {
     text-shadow:
-      0 0 3px #fff3b0,
-      0 -4px 4px #ffd23a,
-      2px -9px 7px #ff9a1a,
-      -2px -15px 11px rgba(255,90,0,0.8),
-      1px -22px 16px rgba(220,40,0,0.5),
-      0 2px 5px rgba(0,0,0,0.5);
+      0 0 10px #fff3b0,
+      0 -14px 14px #ffd23a,
+      6px -32px 24px #ff9a1a,
+      -6px -52px 38px rgba(255,90,0,0.85),
+      3px -76px 55px rgba(220,40,0,0.55),
+      0 6px 15px rgba(0,0,0,0.6);
   }
   100% {
     text-shadow:
-      0 0 4px #fff3b0,
-      1px -5px 5px #ffd23a,
-      -2px -11px 8px #ff9a1a,
-      2px -18px 13px rgba(255,90,0,0.8),
-      -1px -26px 18px rgba(220,40,0,0.5),
-      0 2px 5px rgba(0,0,0,0.5);
+      0 0 14px #fff3b0,
+      3px -18px 18px #ffd23a,
+      -6px -38px 28px #ff9a1a,
+      6px -62px 45px rgba(255,90,0,0.85),
+      -3px -90px 62px rgba(220,40,0,0.55),
+      0 6px 15px rgba(0,0,0,0.6);
   }
 }
 
