@@ -1,0 +1,106 @@
+:root {
+  --bg: #fff;
+  --fg: #000;
+  --border: #ccc;
+  --btn-bg: #eee;
+  --btn-active: #ddd;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111;
+    --fg: #fff;
+    --border: #444;
+    --btn-bg: #333;
+    --btn-active: #555;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111;
+  --fg: #fff;
+  --border: #444;
+  --btn-bg: #333;
+  --btn-active: #555;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  min-height: 100dvh;
+  overflow: hidden;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.screen { display: none; padding: 16px; height: 100dvh; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+.screen.active { display: flex; }
+
+h1, h2 { font-weight: normal; }
+
+.big-button {
+  width: calc(100% - 32px);
+  max-width: 400px;
+  padding: 20px;
+  font-size: 18px;
+  border: 1px solid var(--border);
+  background: var(--btn-bg);
+  color: var(--fg);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.big-button:active { background: var(--btn-active); }
+
+#game-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  height: 80dvh;
+  padding: 16px;
+}
+
+.control-button {
+  flex: 1;
+  width: 100%;
+  font-size: 24px;
+  font-weight: bold;
+  border: 2px solid var(--border);
+  background: var(--btn-bg);
+  color: var(--fg);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.control-button:active { background: var(--btn-active); }
+.control-button.held { background: var(--btn-active); border-color: var(--fg); }
+
+#power-area { flex: 1; display: flex; flex-direction: column; }
+#power-area .control-button { flex: 1; }
+#cooldown-text { text-align: center; padding: 4px; font-size: 14px; }
+
+#btn-recalibrate { padding: 8px 16px; font-size: 14px; border: 1px solid var(--border); background: var(--btn-bg); color: var(--fg); }
+#player-label { font-size: 14px; }
+
+#class-list, #color-list {
+  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; padding: 8px 0;
+}
+#class-list button, #color-list button {
+  padding: 12px 16px; font-size: 16px; border: 2px solid var(--border); background: var(--btn-bg); color: var(--fg); cursor: pointer;
+}
+#class-list button.selected, #color-list button.selected { border-color: var(--fg); background: var(--btn-active); }
+
+/* Hidden haptic trigger for iOS */
+#haptic-container { position: fixed; top: -100px; left: -100px; opacity: 0; pointer-events: none; }
+
+/* Flash overlay for haptic fallback */
+#flash-overlay {
+  position: fixed; inset: 0; background: white; opacity: 0; pointer-events: none;
+  transition: opacity 50ms;
+}
+#flash-overlay.flash { opacity: 0.5; }
+
+#debug-panel { position: fixed; bottom: 0; left: 0; right: 0; padding: 8px; background: rgba(0,0,0,0.8); color: #0f0; font-size: 12px; max-height: 30vh; overflow: auto; }
+#debug-log { white-space: pre-wrap; font-size: 11px; }
