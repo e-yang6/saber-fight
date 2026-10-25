@@ -94,6 +94,9 @@ export interface InvalidTokenMsg {
 export interface HapticMsg {
   type: 'haptic';
   effect: HapticEffect;
+  /** Hits only: 0..1 swing power and whether it was a smash, so the buzz can scale */
+  power?: number;
+  smash?: boolean;
 }
 
 export interface GameStateMsg {
@@ -174,6 +177,8 @@ export interface PlayerAssignedMsg {
   slot: PlayerSlot;
   token: PlayerToken;
   lanOrigin?: string;
+  /** Plain ws:// LAN address for the Expo controller app (it can't trust the self-signed HTTPS cert) */
+  lanWsOrigin?: string;
 }
 
 export interface WaitingForOpponentMsg {

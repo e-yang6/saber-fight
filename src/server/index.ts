@@ -65,8 +65,8 @@ async function main() {
     sendSnapshot(slot: PlayerSlot, msg: SnapshotMsg) {
       session.sendToPlayer(slot, msg);
     },
-    sendHaptic(slot: PlayerSlot, effect: HapticEffect) {
-      session.sendToController(slot, { type: 'haptic', effect });
+    sendHaptic(slot: PlayerSlot, effect: HapticEffect, hit?: { power: number; smash: boolean }) {
+      session.sendToController(slot, { type: 'haptic', effect, ...hit });
     },
     sendCooldown(slot: PlayerSlot, remaining: number, total: number) {
       session.sendToController(slot, { type: 'cooldown', remaining, total });
@@ -153,6 +153,7 @@ async function main() {
         slot: result.slot,
         token: result.token,
         lanOrigin,
+        lanWsOrigin: `ws://${lanIP}:${PORT}`,
       }));
 
       // If both players now connected, start class select

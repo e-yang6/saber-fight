@@ -59,6 +59,22 @@ mkcert localhost 192.168.x.x  # your LAN IP
 SSL_CERT=./localhost+1.pem SSL_KEY=./localhost+1-key.pem npm run dev
 ```
 
+## Expo Controller App (real haptics, no Xcode)
+
+Safari can't do proper vibration on iPhone, so `mobile/` is an Expo app version of the phone controller with layered Taptic haptics: a metallic clang on blade clashes, a thud that scales with swing power on hits, and a long rumble on smashes. It runs inside the free **Expo Go** app; no Xcode, Mac, or Apple developer account needed.
+
+```bash
+cd mobile
+npm install
+npx expo start        # scan the QR it prints with your iPhone camera (opens Expo Go)
+```
+
+Then in the app, scan the QR code on your laptop. Phone and laptop must be on the same Wi-Fi as the game server (the app talks to it over plain `ws://` on port 3000, so no certificate setup). Tunnel URLs work too.
+
+Notes:
+- Haptics are silent in Low Power Mode or if System Haptics is off in Settings.
+- The browser controller still works; players can mix the app and Safari.
+
 ## How to Play
 
 1. Each player opens `/player/` on their laptop

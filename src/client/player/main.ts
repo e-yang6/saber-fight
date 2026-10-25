@@ -146,6 +146,7 @@ function hideOverlay(): void {
 // ─── QR code generation ─────────────────────────────────────────────
 
 let serverLanOrigin: string | null = null;
+let serverLanWsOrigin: string | null = null;
 
 function generateQR(token: string): void {
   // If accessed via tunnel (not localhost/LAN IP), use the tunnel origin for the QR
@@ -153,7 +154,9 @@ function generateQR(token: string): void {
     || location.hostname === '127.0.0.1'
     || location.hostname.match(/^(10|192\.168|172\.(1[6-9]|2\d|3[01]))\./);
   const origin = isLocalAccess ? (serverLanOrigin || window.location.origin) : window.location.origin;
-  const controllerUrl = `${origin}/controller/?token=${token}`;
+  // `ws` is only read by the Expo app; over a tunnel it derives wss:// from the URL itself
+  const wsParam = isLocalAccess && serverLanWsOrigin ? `&ws=${encodeURIComponent(serverLanWsOrigin)}` : '';
+  const controllerUrl = `${origin}/controller/?token=${token}${wsParam}`;
   QRCode.toCanvas(qrCanvas, controllerUrl, {
     width: 240,
     margin: 2,
@@ -210,6 +213,7 @@ function handleMessage(msg: ServerToPlayerMsg): void {
     case 'playerAssigned': {
       mySlot = msg.slot;
       if (msg.lanOrigin) serverLanOrigin = msg.lanOrigin;
+      if (msg.lanWsOrigin) serverLanWsOrigin = msg.lanWsOrigin;
       lobbyStatus.textContent = `You are Player ${msg.slot}`;
       generateQR(msg.token);
       controllerStatus.textContent = 'Scan the QR code with your phone';

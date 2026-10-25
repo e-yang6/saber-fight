@@ -187,7 +187,7 @@ class ServerFighter {
 
 export interface GameCallbacks {
   sendSnapshot: (slot: PlayerSlot, msg: SnapshotMsg) => void;
-  sendHaptic: (slot: PlayerSlot, effect: HapticEffect) => void;
+  sendHaptic: (slot: PlayerSlot, effect: HapticEffect, hit?: { power: number; smash: boolean }) => void;
   sendCooldown: (slot: PlayerSlot, remaining: number, total: number) => void;
   broadcastGameState: (state: GameState) => void;
   broadcastRoundResult: (winner: PlayerSlot, scores: [number, number]) => void;
@@ -544,8 +544,8 @@ export class GameServer {
       kind: 'hit', attacker: attacker.slot, defender: defender.slot,
       point: point.toArray(), speed, power, smash,
     });
-    this.cb.sendHaptic(attacker.slot, 'hit_landed');
-    this.cb.sendHaptic(defender.slot, 'got_hit');
+    this.cb.sendHaptic(attacker.slot, 'hit_landed', { power, smash });
+    this.cb.sendHaptic(defender.slot, 'got_hit', { power, smash });
   }
 
   private resolveBlock(blocker: ServerFighter, attacker: ServerFighter, point: Vec3, now: number): void {
