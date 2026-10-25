@@ -13,6 +13,28 @@ interface Particle {
   maxLife: number;
 }
 
+interface ConfettiPiece {
+  mesh: THREE.Mesh;
+  vel: THREE.Vector3;
+  rotVel: THREE.Vector3;
+  wobbleSpeed: number;
+  wobblePhase: number;
+}
+
+interface TearParticle {
+  mesh: THREE.Mesh;
+  vel: THREE.Vector3;
+  life: number;
+  maxLife: number;
+}
+
+interface TearRipple {
+  mesh: THREE.Mesh;
+  mat: THREE.MeshBasicMaterial;
+  life: number;
+  maxLife: number;
+}
+
 interface ComicHitMarker {
   mesh: THREE.Mesh;
   mat: THREE.MeshBasicMaterial;
@@ -22,6 +44,7 @@ interface ComicHitMarker {
   maxLife: number;
   baseScale: number;
 }
+
 
 /** Generates a high-contrast comic starburst canvas texture with impact crosshair */
 function createComicStarburstTexture(): THREE.CanvasTexture {
@@ -158,6 +181,18 @@ export class VFX {
   // Full-screen flash overlay
   private flashMesh: THREE.Mesh;
   private flashMat: THREE.MeshBasicMaterial;
+
+  // End-game celebration & weeping effects
+  private isCelebrating = false;
+  private isWeeping = false;
+  private getEyePositionsFn: (() => { left: THREE.Vector3; right: THREE.Vector3 }) | null = null;
+  private confettiPieces: ConfettiPiece[] = [];
+  private activeTears: TearParticle[] = [];
+  private activeRipples: TearRipple[] = [];
+  private celebrationMotes: Particle[] = [];
+  private tearSpawnTimer = 0;
+  private moteSpawnTimer = 0;
+
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -671,6 +706,242 @@ export class VFX {
       this.screenShake *= Math.max(0, 1 - 6 * dt);
       if (this.screenShake < 0.01) this.screenShake = 0;
     }
+
+    // ─── Update Confetti & Celebration Motes ──────────────────────────
+    if (this.confettiPieces.length > 0) {
+      for (const c of this.confettiPieces) {
+        c.wobblePhase += c.wobbleSpeed * dt;
+        c.vel.x = Math.sin(c.wobblePhase) * 0.45;
+        c.vel.z = Math.cos(c.wobblePhase * 0.7) * 0.35;
+        c.mesh.position.addScaledVector(c.vel, dt);
+        c.mesh.rotation.x += c.rotVel.x * dt;
+        c.mesh.rotation.y += c.rotVel.y * dt;
+        c.mesh.rotation.z += c.rotVel.z * dt;
+
+        // Ground collision & continuous cycling during celebration
+        if (c.mesh.position.y <= 0.02) {
+          if (this.isCelebrating) {
+            c.mesh.position.y = 3.6 + Math.random() * 1.8;
+            c.mesh.position.x = (Math.random() - 0.5) * 4.5;
+            c.mesh.position.z = (Math.random() - 0.5) * 3.0;
+          } else {
+            c.mesh.visible = false;
+          }
+        }
+      }
+    }
+
+    if (this.isCelebrating) {
+      this.moteSpawnTimer += dt;
+      if (this.moteSpawnTimer > 0.06) {
+        this.moteSpawnTimer = 0;
+        this.spawnCelebrationMote();
+      }
+    }
+
+    // ─── Update Tears & Ripples ──────────────────────────────────────
+    if (this.isWeeping && this.getEyePositionsFn) {
+      this.tearSpawnTimer += dt;
+      if (this.tearSpawnTimer >= 0.14) {
+        this.tearSpawnTimer = 0;
+        const eyes = this.getEyePositionsFn();
+        this.spawnTearDroplet(eyes.left);
+        this.spawnTearDroplet(eyes.right);
+      }
+    }
+
+    for (let i = this.activeTears.length - 1; i >= 0; i--) {
+      const t = this.activeTears[i];
+      t.life -= dt;
+      t.vel.y -= 7.5 * dt;
+      t.mesh.position.addScaledVector(t.vel, dt);
+
+      if (t.mesh.position.y <= 0.02 || t.life <= 0) {
+        if (t.mesh.position.y <= 0.02) {
+          this.spawnTearRipple(t.mesh.position.x, t.mesh.position.z);
+        }
+        this.scene.remove(t.mesh);
+        t.mesh.geometry.dispose();
+        (t.mesh.material as THREE.Material).dispose();
+        this.activeTears.splice(i, 1);
+      }
+    }
+
+    for (let i = this.activeRipples.length - 1; i >= 0; i--) {
+      const r = this.activeRipples[i];
+      r.life -= dt;
+      if (r.life <= 0) {
+        this.scene.remove(r.mesh);
+        r.mesh.geometry.dispose();
+        r.mat.dispose();
+        this.activeRipples.splice(i, 1);
+        continue;
+      }
+      const progress = 1 - r.life / r.maxLife;
+      const s = 0.03 + progress * 0.16;
+      r.mesh.scale.set(s, s, s);
+      r.mat.opacity = 0.6 * (1 - progress);
+    }
+  }
+
+  // ─── End Game VFX Methods ─────────────────────────────────────────
+
+  /** Trigger fluttering golden confetti bursts and rising spark celebration */
+  startVictoryCelebration(): void {
+    this.clearEndGameVFX();
+    this.isCelebrating = true;
+
+    const goldColors = [0xffd700, 0xffc107, 0xffa000, 0xffe082, 0xffffff, 0xf59e0b];
+    const confettiGeo = new THREE.PlaneGeometry(0.09, 0.06);
+
+    for (let i = 0; i < 90; i++) {
+      const color = goldColors[Math.floor(Math.random() * goldColors.length)];
+      const mat = new THREE.MeshStandardMaterial({
+        color,
+        roughness: 0.3,
+        metalness: 0.8,
+        side: THREE.DoubleSide,
+      });
+      const mesh = new THREE.Mesh(confettiGeo, mat);
+
+      mesh.position.set(
+        (Math.random() - 0.5) * 4.5,
+        1.5 + Math.random() * 3.5,
+        (Math.random() - 0.5) * 3.5,
+      );
+
+      mesh.rotation.set(
+        Math.random() * Math.PI * 2,
+        Math.random() * Math.PI * 2,
+        Math.random() * Math.PI * 2,
+      );
+
+      this.scene.add(mesh);
+      this.confettiPieces.push({
+        mesh,
+        vel: new THREE.Vector3(
+          (Math.random() - 0.5) * 0.4,
+          -(0.7 + Math.random() * 0.9),
+          (Math.random() - 0.5) * 0.4,
+        ),
+        rotVel: new THREE.Vector3(
+          (Math.random() - 0.5) * 6,
+          (Math.random() - 0.5) * 6,
+          (Math.random() - 0.5) * 6,
+        ),
+        wobbleSpeed: 2 + Math.random() * 4,
+        wobblePhase: Math.random() * Math.PI * 2,
+      });
+    }
+  }
+
+  private spawnCelebrationMote(): void {
+    const spark = this.getPooledSpark();
+    if (!spark) return;
+
+    // Spawn rising radiant gold sparks around the platform
+    const angle = Math.random() * Math.PI * 2;
+    const radius = 0.3 + Math.random() * 1.5;
+    spark.position.set(
+      Math.cos(angle) * radius,
+      0.05 + Math.random() * 0.2,
+      Math.sin(angle) * radius,
+    );
+
+    spark.visible = true;
+    spark.scale.setScalar(0.7 + Math.random() * 0.8);
+    (spark.material as THREE.MeshBasicMaterial).color.setHex(0xffdd44);
+    (spark.material as THREE.MeshBasicMaterial).opacity = 0.9;
+
+    this.particles.push({
+      mesh: spark,
+      velocity: new THREE.Vector3(
+        (Math.random() - 0.5) * 0.4,
+        1.0 + Math.random() * 1.5,
+        (Math.random() - 0.5) * 0.4,
+      ),
+      life: 0.8 + Math.random() * 0.6,
+      maxLife: 1.4,
+    });
+  }
+
+  /** Trigger streaming weeping tears from character's eyes */
+  startTears(getEyePos: () => { left: THREE.Vector3; right: THREE.Vector3 }): void {
+    this.clearEndGameVFX();
+    this.isWeeping = true;
+    this.getEyePositionsFn = getEyePos;
+  }
+
+  private spawnTearDroplet(pos: THREE.Vector3): void {
+    const tearGeo = new THREE.SphereGeometry(0.022, 6, 6);
+    const tearMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.9,
+    });
+    const mesh = new THREE.Mesh(tearGeo, tearMat);
+    mesh.position.copy(pos);
+
+    this.scene.add(mesh);
+    this.activeTears.push({
+      mesh,
+      vel: new THREE.Vector3(
+        (Math.random() - 0.5) * 0.08,
+        0.02,
+        0.18 + Math.random() * 0.08,
+      ),
+      life: 1.2,
+      maxLife: 1.2,
+    });
+  }
+
+  private spawnTearRipple(x: number, z: number): void {
+    const geo = new THREE.RingGeometry(0.01, 0.025, 16);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.6,
+      side: THREE.DoubleSide,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.set(x, 0.015, z);
+
+    this.scene.add(mesh);
+    this.activeRipples.push({
+      mesh,
+      mat,
+      life: 0.45,
+      maxLife: 0.45,
+    });
+  }
+
+  /** Clean up all end game celebration / defeat particles */
+  clearEndGameVFX(): void {
+    this.isCelebrating = false;
+    this.isWeeping = false;
+    this.getEyePositionsFn = null;
+
+    for (const c of this.confettiPieces) {
+      this.scene.remove(c.mesh);
+      c.mesh.geometry.dispose();
+      (c.mesh.material as THREE.Material).dispose();
+    }
+    this.confettiPieces = [];
+
+    for (const t of this.activeTears) {
+      this.scene.remove(t.mesh);
+      t.mesh.geometry.dispose();
+      (t.mesh.material as THREE.Material).dispose();
+    }
+    this.activeTears = [];
+
+    for (const r of this.activeRipples) {
+      this.scene.remove(r.mesh);
+      r.mesh.geometry.dispose();
+      r.mat.dispose();
+    }
+    this.activeRipples = [];
   }
 
   private getPooledSpark(): THREE.Mesh | null {
@@ -680,3 +951,4 @@ export class VFX {
     return null;
   }
 }
+

@@ -67,7 +67,13 @@ export class GameRenderer {
   private hasSnapshot = false;
   private menuMode = true;
 
+  // End-game victory / defeat showcase state
+  private matchEndMode: 'none' | 'victory' | 'defeat' = 'none';
+  private matchEndStartTime = 0;
+  private matchEndLight: THREE.SpotLight | null = null;
+
   private swinging = new Map<PlayerSlot, boolean>();
+
   private lastSwooshAt = new Map<PlayerSlot, number>();
   /** Camera recoil in meters along the view axis (positive = pushed back) */
   private camKick = 0;
@@ -247,8 +253,13 @@ export class GameRenderer {
       this.countdownStartTime = 0;
     }
 
+    if (snap.state !== 'matchEnd' && this.matchEndMode !== 'none') {
+      this.clearMatchEnd();
+    }
+
     // Sound: only during active gameplay (prevents spam after round end)
     const active = snap.state === 'fighting' || snap.state === 'countdown';
+
     if (active) {
       Audio.updateHum(this.mySlot, myFighterData.tipSpeed);
       Audio.updateHum(oppSlot, oppFighterData.tipSpeed);
@@ -454,6 +465,23 @@ export class GameRenderer {
 
   /** Update camera position and orientation: menu orbit, 360-degree crane intro or first-person */
   private updateCamera(now: number): void {
+    if (this.matchEndMode !== 'none') {
+      const self = this.fighters.get(this.mySlot);
+      if (self) self.group.visible = true;
+      this.fpSaberGroup.visible = false;
+
+      // Fixed dramatic front-facing camera focused on platform center
+      const elapsed = (now - this.matchEndStartTime) / 1000;
+      const subtleDrift = Math.sin(elapsed * 0.7) * 0.04;
+
+      this.camera.position.set(subtleDrift, 1.25, 3.1);
+      this.camera.lookAt(0, 0.95, 0);
+
+      this.camera.fov = 62;
+      this.camera.updateProjectionMatrix();
+      return;
+    }
+
     if (this.menuMode) {
       const theta = (now / 1000) * MENU_ORBIT_SPEED;
       this.camera.position.set(
@@ -554,6 +582,72 @@ export class GameRenderer {
     }
   }
 
+  /** Trigger end-game victory celebration or defeat weeping showcase */
+  setMatchEnd(isWinner: boolean, scores?: [number, number]): void {
+    if (this.matchEndMode !== 'none') return;
+    this.matchEndMode = isWinner ? 'victory' : 'defeat';
+    this.matchEndStartTime = performance.now();
+    this.menuMode = false;
+
+    const self = this.fighters.get(this.mySlot);
+    const oppSlot: PlayerSlot = this.mySlot === 1 ? 2 : 1;
+    const opp = this.fighters.get(oppSlot);
+
+    if (opp) {
+      opp.group.visible = false;
+    }
+
+    if (self) {
+      self.group.visible = true;
+      if (isWinner) {
+        self.setCelebration();
+        this.vfx.startVictoryCelebration();
+        Audio.playVictoryFanfare();
+      } else {
+        self.setWeeping();
+        this.vfx.startTears(() => self.getEyeWorldPositions());
+        Audio.playDefeatSound();
+      }
+    }
+
+    // Add cinematic overhead spotlight for dramatic scene focus
+    if (!this.matchEndLight) {
+      this.matchEndLight = new THREE.SpotLight(
+        isWinner ? 0xffea88 : 0x5588aa,
+        isWinner ? 5.0 : 2.8,
+        15,
+        Math.PI / 4,
+        0.5,
+      );
+      this.matchEndLight.position.set(0, 6, 1.5);
+      this.matchEndLight.target.position.set(0, 0, 0);
+      this.scene.add(this.matchEndLight);
+      this.scene.add(this.matchEndLight.target);
+    }
+  }
+
+  /** Clear match end mode and restore standard combat camera/pose */
+  clearMatchEnd(): void {
+    if (this.matchEndMode === 'none') return;
+    this.matchEndMode = 'none';
+
+    const self = this.fighters.get(this.mySlot);
+    const oppSlot: PlayerSlot = this.mySlot === 1 ? 2 : 1;
+    const opp = this.fighters.get(oppSlot);
+
+    if (self) self.resetPose();
+    if (opp) opp.group.visible = true;
+
+    this.vfx.clearEndGameVFX();
+
+    if (this.matchEndLight) {
+      this.scene.remove(this.matchEndLight.target);
+      this.scene.remove(this.matchEndLight);
+      this.matchEndLight.dispose();
+      this.matchEndLight = null;
+    }
+  }
+
   private loop = (): void => {
     this.animationId = requestAnimationFrame(this.loop);
 
@@ -583,11 +677,14 @@ export class GameRenderer {
     if (this.camKick > 0.002 && !this.isCountdown && !this.menuMode) this.camera.translateZ(this.camKick);
 
     // FP saber: world-space orientation → camera-local, after the camera has moved this frame
-    this.fpSaberGroup.quaternion.copy(this.camera.quaternion).invert().multiply(this.mySaberWorldQ);
-    this.fpGuardBlend += (this.myBlocking ? 1 : -1) * dt / 0.1;
-    this.fpGuardBlend = Math.min(1, Math.max(0, this.fpGuardBlend));
-    this.fpSaberGroup.position.lerpVectors(FP_SABER_REST, FP_SABER_GUARD, this.fpGuardBlend);
-    this.fpSaber.update(dt);
+    if (this.matchEndMode === 'none') {
+      this.fpSaberGroup.quaternion.copy(this.camera.quaternion).invert().multiply(this.mySaberWorldQ);
+      this.fpGuardBlend += (this.myBlocking ? 1 : -1) * dt / 0.1;
+      this.fpGuardBlend = Math.min(1, Math.max(0, this.fpGuardBlend));
+      this.fpSaberGroup.position.lerpVectors(FP_SABER_REST, FP_SABER_GUARD, this.fpGuardBlend);
+      this.fpSaber.update(dt);
+    }
+
 
     // Overcharged blades crackle continuously
     this.bladeSparkAccum += dt;

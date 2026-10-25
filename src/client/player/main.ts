@@ -17,9 +17,12 @@ const classSelectScreen = document.getElementById('class-select-screen')!;
 const gameCanvas = document.getElementById('game-canvas') as HTMLCanvasElement;
 const hud = document.getElementById('hud')!;
 const overlay = document.getElementById('overlay')!;
+const overlayBadge = document.getElementById('overlay-badge')!;
 const overlayTitle = document.getElementById('overlay-title')!;
 const overlaySub = document.getElementById('overlay-subtitle')!;
+const overlayScore = document.getElementById('overlay-score')!;
 const overlayBtn = document.getElementById('overlay-btn') as HTMLButtonElement;
+
 const lobbyStatus = document.getElementById('lobby-status')!;
 const qrCanvas = document.getElementById('qr-canvas') as HTMLCanvasElement;
 const lobbyUrl = document.getElementById('lobby-url')!;
@@ -41,6 +44,8 @@ let myControllerConnected = false;
 let currentState: GameState = 'lobby';
 let fakeController: FakeController | null = null;
 let resultTimer: ReturnType<typeof setTimeout> | null = null;
+let latestScores: [number, number] = [0, 0];
+
 /** Matches the sky beam's strike + hold + fade in VFX.spawnSkyBeam */
 const RESULT_DELAY_MS = 1400;
 const isDebug = location.search.includes('debug');
@@ -79,6 +84,10 @@ function showScreen(name: 'lobby' | 'classSelect' | 'game') {
 
 function showOverlay(title: string, subtitle: string, showBtn = false, isCountdown = false): void {
   overlay.style.display = 'flex';
+  overlay.classList.remove('victory-mode', 'defeat-mode');
+  overlayBadge.style.display = 'none';
+  overlayScore.style.display = 'none';
+
   if (isCountdown) {
     overlay.classList.add('countdown-mode');
   } else {
@@ -93,13 +102,45 @@ function showOverlay(title: string, subtitle: string, showBtn = false, isCountdo
     }
   }
   overlaySub.textContent = subtitle;
+  overlayBtn.textContent = 'Rematch';
   overlayBtn.style.display = showBtn ? 'inline-block' : 'none';
+}
+
+function showMatchEndOverlay(isWinner: boolean, scores: [number, number]): void {
+  overlay.style.display = 'flex';
+  overlay.classList.remove('countdown-mode');
+
+  if (isWinner) {
+    overlay.classList.remove('defeat-mode');
+    overlay.classList.add('victory-mode');
+    overlayBadge.textContent = 'VICTORY';
+    overlayBadge.style.display = 'inline-block';
+    overlayTitle.textContent = 'YOU WIN!';
+    overlaySub.textContent = 'MATCH CHAMPION';
+    overlayBtn.textContent = 'PLAY AGAIN';
+  } else {
+    overlay.classList.remove('victory-mode');
+    overlay.classList.add('defeat-mode');
+    overlayBadge.textContent = 'DEFEAT';
+    overlayBadge.style.display = 'inline-block';
+    overlayTitle.textContent = 'YOU LOSE';
+    overlaySub.textContent = 'BETTER LUCK NEXT TIME';
+    overlayBtn.textContent = 'REMATCH';
+  }
+
+  overlayScore.textContent = `Match Score: ${scores[0]} - ${scores[1]}`;
+  overlayScore.style.display = 'block';
+  overlayBtn.style.display = 'inline-block';
 }
 
 function hideOverlay(): void {
   overlay.style.display = 'none';
-  overlay.classList.remove('countdown-mode');
+  overlay.classList.remove('countdown-mode', 'victory-mode', 'defeat-mode');
+  overlayBadge.style.display = 'none';
+  overlayScore.style.display = 'none';
+  overlayBtn.textContent = 'Rematch';
 }
+
 
 // ─── QR code generation ─────────────────────────────────────────────
 
@@ -124,12 +165,16 @@ function generateQR(token: string): void {
 
 function handleGameState(state: GameState): void {
   currentState = state;
-  hideOverlay();
+  if (state !== 'matchEnd') {
+    renderer?.clearMatchEnd();
+    hideOverlay();
+  }
   if (resultTimer && state !== 'roundEnd' && state !== 'matchEnd') {
     clearTimeout(resultTimer);
     resultTimer = null;
   }
   renderer?.setMenuMode(state === 'lobby' || state === 'classSelect');
+
   switch (state) {
     case 'lobby':
       showScreen('lobby');
@@ -223,6 +268,7 @@ function handleMessage(msg: ServerToPlayerMsg): void {
 
     case 'snapshot':
       if (renderer) {
+        latestScores = [msg.scores[0], msg.scores[1]];
         renderer.applySnapshot(msg);
 
         // Update HUD
@@ -243,13 +289,15 @@ function handleMessage(msg: ServerToPlayerMsg): void {
     case 'roundResult': {
       const isWinner = msg.winner === mySlot;
       const matchOver = msg.scores[msg.winner - 1] >= ROUNDS_TO_WIN;
+      latestScores = [msg.scores[0], msg.scores[1]];
       const score = `Score: ${msg.scores[0]} - ${msg.scores[1]}`;
       if (resultTimer) clearTimeout(resultTimer);
       // Let the sky beam play out before the result covers the screen
       resultTimer = setTimeout(() => {
         resultTimer = null;
         if (matchOver) {
-          showOverlay(isWinner ? 'You win the match!' : 'You lose the match!', score);
+          renderer?.setMatchEnd(isWinner, latestScores);
+          showMatchEndOverlay(isWinner, latestScores);
         } else {
           showOverlay(isWinner ? 'You win the round!' : 'You lose the round!', score);
         }
@@ -261,11 +309,8 @@ function handleMessage(msg: ServerToPlayerMsg): void {
       const isWinner = msg.winner === mySlot;
       if (resultTimer) clearTimeout(resultTimer);
       resultTimer = null;
-      showOverlay(
-        isWinner ? 'You win the match!' : 'You lose the match!',
-        '',
-        true,
-      );
+      renderer?.setMatchEnd(isWinner, latestScores);
+      showMatchEndOverlay(isWinner, latestScores);
       break;
     }
   }
@@ -280,6 +325,7 @@ if (btnSoloLobby) {
 }
 
 overlayBtn.addEventListener('click', () => {
+  renderer?.clearMatchEnd();
   send({ type: 'rematch' });
   hideOverlay();
   // In debug or solo mode (keyboard), re-ready after rematch
