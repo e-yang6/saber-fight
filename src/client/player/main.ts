@@ -5,7 +5,7 @@
 
 import QRCode from 'qrcode';
 import type { PlayerSlot, ServerToPlayerMsg, GameState } from '@shared/protocol.js';
-import { FEATURES } from '@shared/constants.js';
+import { FEATURES, ROUNDS_TO_WIN } from '@shared/constants.js';
 import { connectPlayer, send } from './network.js';
 import { GameRenderer } from './game/GameRenderer.js';
 import { FakeController } from './FakeController.js';
@@ -40,6 +40,9 @@ let soloActive = false;
 let myControllerConnected = false;
 let currentState: GameState = 'lobby';
 let fakeController: FakeController | null = null;
+let resultTimer: ReturnType<typeof setTimeout> | null = null;
+/** Matches the sky beam's strike + hold + fade in VFX.spawnSkyBeam */
+const RESULT_DELAY_MS = 1400;
 const isDebug = location.search.includes('debug');
 const isTest = location.search.includes('test');
 
@@ -122,6 +125,10 @@ function generateQR(token: string): void {
 function handleGameState(state: GameState): void {
   currentState = state;
   hideOverlay();
+  if (resultTimer && state !== 'roundEnd' && state !== 'matchEnd') {
+    clearTimeout(resultTimer);
+    resultTimer = null;
+  }
   switch (state) {
     case 'lobby':
       showScreen('lobby');
@@ -233,15 +240,25 @@ function handleMessage(msg: ServerToPlayerMsg): void {
 
     case 'roundResult': {
       const isWinner = msg.winner === mySlot;
-      showOverlay(
-        isWinner ? 'You win the round!' : 'You lose the round!',
-        `Score: ${msg.scores[0]} - ${msg.scores[1]}`,
-      );
+      const matchOver = msg.scores[msg.winner - 1] >= ROUNDS_TO_WIN;
+      const score = `Score: ${msg.scores[0]} - ${msg.scores[1]}`;
+      if (resultTimer) clearTimeout(resultTimer);
+      // Let the sky beam play out before the result covers the screen
+      resultTimer = setTimeout(() => {
+        resultTimer = null;
+        if (matchOver) {
+          showOverlay(isWinner ? 'You win the match!' : 'You lose the match!', score);
+        } else {
+          showOverlay(isWinner ? 'You win the round!' : 'You lose the round!', score);
+        }
+      }, RESULT_DELAY_MS);
       break;
     }
 
     case 'matchResult': {
       const isWinner = msg.winner === mySlot;
+      if (resultTimer) clearTimeout(resultTimer);
+      resultTimer = null;
       showOverlay(
         isWinner ? 'You win the match!' : 'You lose the match!',
         '',
