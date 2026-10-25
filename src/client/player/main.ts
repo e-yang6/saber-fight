@@ -339,4 +339,15 @@ overlayBtn.addEventListener('click', () => {
   }
 });
 
+const powerBtn = document.getElementById('power');
+if (powerBtn) {
+  powerBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    send({ type: 'fakeInput', msg: { type: 'button', button: 'power', state: 'down' } });
+    setTimeout(() => {
+      send({ type: 'fakeInput', msg: { type: 'button', button: 'power', state: 'up' } });
+    }, 120);
+  });
+}
+
 connectPlayer(handleMessage);
