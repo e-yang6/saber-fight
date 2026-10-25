@@ -13,6 +13,7 @@ import type {
 } from '../shared/protocol.js';
 import {
   SWING_SPEED_THRESHOLD, BASE_KNOCKBACK, KNOCKBACK_SPEED_SCALE,
+  MAX_KNOCKBACK, KNOCKBACK_FRICTION, HIT_COOLDOWN_MS,
   CLASH_HITSTOP_MS, BLOCK_STUN_MS, BLOCK_ANGLE_TOLERANCE,
   BLADE_LENGTH, BLADE_RADIUS, HILT_LENGTH,
   BODY_CAPSULE_RADIUS, BODY_CAPSULE_HEIGHT,
@@ -41,6 +42,7 @@ class ServerFighter {
   blocking = false;
   stunned = false;
   stunnedUntil = 0;
+  hitImmuneUntil = 0;
   abilityActive = false;
   abilityEnd = 0;
   cooldownEnd = 0;
@@ -63,6 +65,7 @@ class ServerFighter {
     this.onPlatform = true;
     this.fallen = false;
     this.stunned = false;
+    this.hitImmuneUntil = 0;
     this.blocking = false;
     this.abilityActive = false;
     this.bladeScale = 1;
@@ -413,6 +416,7 @@ export class GameServer {
 
   private checkBladeVsBody(attacker: ServerFighter, defender: ServerFighter, now: number): void {
     if (attacker.stunned || attacker.tipSpeed < SWING_SPEED_THRESHOLD) return;
+    if (now < defender.hitImmuneUntil) return;
 
     const body = defender.getBodyCapsule();
     const swept = sweptBladeBodyCheck(
@@ -453,14 +457,18 @@ export class GameServer {
     const aCfg = CLASS_CONFIGS[attacker.className].stats;
     const dCfg = CLASS_CONFIGS[defender.className].stats;
 
-    let knockback = BASE_KNOCKBACK + (speed - SWING_SPEED_THRESHOLD) * KNOCKBACK_SPEED_SCALE;
+    let knockback = Math.min(
+      MAX_KNOCKBACK,
+      BASE_KNOCKBACK + (speed - SWING_SPEED_THRESHOLD) * KNOCKBACK_SPEED_SCALE,
+    );
     knockback *= aCfg.knockbackDealt * dCfg.knockbackReceived;
     if (attacker.abilityActive && attacker.className === 'striker') knockback *= 2;
 
     const dir = Vec3.sub(defender.position, attacker.position);
     dir.y = 0;
     dir.normalize();
-    defender.velocity.addScaled(dir, knockback);
+    defender.velocity.addScaled(dir, knockback * KNOCKBACK_FRICTION);
+    defender.hitImmuneUntil = now + HIT_COOLDOWN_MS;
 
     this.hitstopUntil = now + 40;
     this.events.push({
@@ -484,7 +492,7 @@ export class GameServer {
   private updatePhysics(f: ServerFighter, dt: number, _now: number): void {
     if (f.velocity.lengthSq() > 0.001) {
       f.position.addScaled(f.velocity, dt);
-      f.velocity.scale(Math.max(0, 1 - 5 * dt));
+      f.velocity.scale(Math.max(0, 1 - KNOCKBACK_FRICTION * dt));
     }
     if (f.onPlatform) {
       f.position.y = 0;
@@ -506,11 +514,18 @@ export class GameServer {
     const nz = dz / dist;
 
     if (dist > IDEAL_FIGHT_DISTANCE) {
-      const advance = Math.min(AUTO_ADVANCE_SPEED * dt, (dist - IDEAL_FIGHT_DISTANCE) * 0.5);
-      f1.position.x += nx * advance;
-      f1.position.z += nz * advance;
-      f2.position.x -= nx * advance;
-      f2.position.z -= nz * advance;
+      // A fighter sliding from knockback gives up ground: only the other one closes the gap,
+      // otherwise the pull-back would cancel half of every hit and nobody reaches the edge.
+      const f1Sliding = f1.velocity.lengthSq() > 0.04;
+      const f2Sliding = f2.velocity.lengthSq() > 0.04;
+      const f1Share = f1Sliding === f2Sliding ? 0.5 : f1Sliding ? 0 : 1;
+      const gap = dist - IDEAL_FIGHT_DISTANCE;
+      const f1Advance = Math.min(AUTO_ADVANCE_SPEED * dt, gap * f1Share);
+      const f2Advance = Math.min(AUTO_ADVANCE_SPEED * dt, gap * (1 - f1Share));
+      f1.position.x += nx * f1Advance;
+      f1.position.z += nz * f1Advance;
+      f2.position.x -= nx * f2Advance;
+      f2.position.z -= nz * f2Advance;
     } else if (dist < MIN_FIGHT_DISTANCE) {
       const push = Math.min(AUTO_ADVANCE_SPEED * dt, (MIN_FIGHT_DISTANCE - dist) * 0.5);
       f1.position.x -= nx * push;
@@ -568,14 +583,11 @@ export class GameServer {
     const blockCycle = t % 4.0;
     bot.blocking = blockCycle > 3.0 && blockCycle < 3.8 && !attacking;
 
-    // Slight lateral drift
+    // Slight lateral drift, only well inside the platform (never clamp: knockback must ring it out)
     const drift = Math.sin(t * 0.5) * 0.3 * dt;
-    bot.position.x += drift;
-    const dist = Math.sqrt(bot.position.x ** 2 + bot.position.z ** 2);
-    if (dist > PLATFORM_RADIUS * 0.8) {
-      const s = (PLATFORM_RADIUS * 0.8) / dist;
-      bot.position.x *= s;
-      bot.position.z *= s;
+    const nextX = bot.position.x + drift;
+    if (Math.sqrt(nextX ** 2 + bot.position.z ** 2) < PLATFORM_RADIUS * 0.8) {
+      bot.position.x = nextX;
     }
   }
 
@@ -595,7 +607,7 @@ export class GameServer {
         const dir = Vec3.sub(opp.position, f.position);
         dir.y = 0;
         dir.normalize();
-        opp.velocity.addScaled(dir, 5);
+        opp.velocity.addScaled(dir, MAX_KNOCKBACK * KNOCKBACK_FRICTION);
         this.events.push({ kind: 'shockwave', position: f.position.toArray() });
         break;
       }

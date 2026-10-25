@@ -7,8 +7,11 @@ export const SLERP_FACTOR = 0.95; // orientation smoothing (higher = snappier)
 // ─── Combat ─────────────────────────────────────────────────────────
 
 export const SWING_SPEED_THRESHOLD = 1.5; // m/s blade tip speed to count as a hit
-export const BASE_KNOCKBACK = 0.6; // base knockback distance
-export const KNOCKBACK_SPEED_SCALE = 0.15; // extra knockback per m/s above threshold
+export const BASE_KNOCKBACK = 1.2; // meters slid per clean hit
+export const KNOCKBACK_SPEED_SCALE = 0.15; // extra meters per m/s above threshold
+export const MAX_KNOCKBACK = 2.5; // meters, before class/ability multipliers
+export const KNOCKBACK_FRICTION = 5; // 1/s velocity decay; slide distance = velocity / friction
+export const HIT_COOLDOWN_MS = 350; // one hit per swing, not one per tick of overlap
 export const CLASH_HITSTOP_MS = 120;
 export const BLOCK_STUN_MS = 700;
 export const BLOCK_ANGLE_TOLERANCE = 0.7; // dot product threshold for block angle
