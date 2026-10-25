@@ -34,7 +34,8 @@
         {
           "motionPermission": "Nailong Battle reads your phone's motion so it can be your sword."
         }
-      ]
+      ],
+      "expo-font"
     ]
   }
 }
