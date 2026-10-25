@@ -38,11 +38,6 @@ body {
   paint-order: stroke fill;
   text-shadow: 0 6px 0 #5a3a00, 0 10px 24px rgba(0,0,0,0.45);
   transform: rotate(-3deg);
-  animation: title-bob 3s ease-in-out infinite;
-}
-@keyframes title-bob {
-  0%, 100% { transform: rotate(-3deg) translateY(0); }
-  50% { transform: rotate(-1deg) translateY(-8px); }
 }
 .menu-card {
   display: flex; flex-direction: column; align-items: center; gap: 12px;
