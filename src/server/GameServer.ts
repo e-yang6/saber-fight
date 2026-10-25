@@ -12,8 +12,8 @@ import type {
   FighterSnapshot, GameEvent, SnapshotMsg, OrientationMsg, ButtonMsg,
 } from '../shared/protocol.js';
 import {
-  SWING_SPEED_THRESHOLD, BASE_KNOCKBACK, KNOCKBACK_SPEED_SCALE,
-  MAX_KNOCKBACK, KNOCKBACK_FRICTION, HIT_COOLDOWN_MS,
+  SWING_SPEED_THRESHOLD, STRONG_SWING_SPEED, MIN_KNOCKBACK, MAX_KNOCKBACK, KNOCKBACK_CURVE,
+  SMASH_POWER, SMASH_KNOCKBACK_MULT, SMASH_HITSTOP_MS, KNOCKBACK_FRICTION, HIT_COOLDOWN_MS,
   CLASH_HITSTOP_MS, BLOCK_STUN_MS, BLOCK_ANGLE_TOLERANCE, GUARD_TRANSITION_MS,
   HIT_HITSTOP_MS, CLASH_PUSHBACK, BLOCK_PUSHBACK, GYRO_STALE_MS,
   BLADE_LENGTH, BLADE_RADIUS, HILT_LENGTH,
@@ -29,6 +29,15 @@ import {
 
 /** Guard pose: blade rolled 90° about the phone's screen normal so it lies across the body */
 const GUARD_OFFSET_Q = Quat.fromAxisAngle(0, 0, 1, Math.PI / 2);
+
+const BOT_POWER_MIN = 0.25;
+const BOT_POWER_MAX = 0.6;
+
+/** 0 at the hit threshold, 1 for an all-out swing */
+function swingPower(tipSpeed: number): number {
+  const t = (tipSpeed - SWING_SPEED_THRESHOLD) / (STRONG_SWING_SPEED - SWING_SPEED_THRESHOLD);
+  return Math.min(1, Math.max(0, t));
+}
 
 class ServerFighter {
   slot: PlayerSlot;
@@ -518,20 +527,22 @@ export class GameServer {
     const aCfg = CLASS_CONFIGS[attacker.className].stats;
     const dCfg = CLASS_CONFIGS[defender.className].stats;
 
-    let knockback = Math.min(
-      MAX_KNOCKBACK,
-      BASE_KNOCKBACK + (speed - SWING_SPEED_THRESHOLD) * KNOCKBACK_SPEED_SCALE,
-    );
+    // The bot's swings are instant snaps that always read as all-out, so give it moderate, varied power instead
+    const isBot = this.soloMode && attacker.slot === 2;
+    const power = isBot ? BOT_POWER_MIN + Math.random() * (BOT_POWER_MAX - BOT_POWER_MIN) : swingPower(speed);
+    const smash = power >= SMASH_POWER;
+    let knockback = MIN_KNOCKBACK + (MAX_KNOCKBACK - MIN_KNOCKBACK) * power ** KNOCKBACK_CURVE;
+    if (smash) knockback *= SMASH_KNOCKBACK_MULT;
     knockback *= aCfg.knockbackDealt * dCfg.knockbackReceived;
     if (attacker.abilityActive && attacker.className === 'striker') knockback *= 2;
 
     this.shove(defender, attacker, knockback);
     defender.hitImmuneUntil = now + HIT_COOLDOWN_MS;
 
-    this.hitstopUntil = now + HIT_HITSTOP_MS;
+    this.hitstopUntil = now + (smash ? SMASH_HITSTOP_MS : HIT_HITSTOP_MS);
     this.events.push({
       kind: 'hit', attacker: attacker.slot, defender: defender.slot,
-      point: point.toArray(), speed,
+      point: point.toArray(), speed, power, smash,
     });
     this.cb.sendHaptic(attacker.slot, 'hit_landed');
     this.cb.sendHaptic(defender.slot, 'got_hit');

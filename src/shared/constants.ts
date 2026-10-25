@@ -7,9 +7,19 @@ export const SLERP_FACTOR = 0.95; // orientation smoothing (higher = snappier)
 // ─── Combat ─────────────────────────────────────────────────────────
 
 export const SWING_SPEED_THRESHOLD = 1.5; // m/s blade tip speed to count as a hit
-export const BASE_KNOCKBACK = 1.2; // meters slid per clean hit
-export const KNOCKBACK_SPEED_SCALE = 0.15; // extra meters per m/s above threshold
-export const MAX_KNOCKBACK = 2.5; // meters, before class/ability multipliers
+/**
+ * Knockback ramps up faster than linearly with swing power, so committing to a big swing pays off:
+ * power = (tipSpeed - threshold) / (STRONG_SWING_SPEED - threshold), clamped 0..1;
+ * meters = MIN + (MAX - MIN) * power^KNOCKBACK_CURVE, before class/ability multipliers.
+ */
+export const STRONG_SWING_SPEED = 24; // m/s tip speed of an all-out swing (~950°/s on the phone gyro)
+export const MIN_KNOCKBACK = 0.6;
+export const MAX_KNOCKBACK = 4.0;
+export const KNOCKBACK_CURVE = 1.5;
+/** Swings at or above this power are smashes: extra knockback and a longer freeze-frame */
+export const SMASH_POWER = 0.8;
+export const SMASH_KNOCKBACK_MULT = 1.2;
+export const SMASH_HITSTOP_MS = 160;
 export const KNOCKBACK_FRICTION = 5; // 1/s velocity decay; slide distance = velocity / friction
 export const HIT_COOLDOWN_MS = 350; // one hit per swing, not one per tick of overlap
 export const CLASH_HITSTOP_MS = 120;

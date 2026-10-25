@@ -144,13 +144,19 @@ export function playClash(): void {
 }
 
 /** Saber connects with a body: sub punch + sizzle + crack. `intensity` 0..1 scales it all. */
-export function playHit(intensity = 0.5): void {
+export function playHit(intensity = 0.5, smash = false): void {
   const c = getCtx();
-  const k = 0.6 + Math.min(1, Math.max(0, intensity)) * 0.4;
+  const k = 0.4 + Math.min(1, Math.max(0, intensity)) * 0.6;
   tone(c, 'sine', 160, 38, 0.9 * k, 0.32);
   tone(c, 'triangle', 320, 80, 0.3 * k, 0.12);
   noise(c, 'lowpass', 1800, 0.8, 0.6 * k, 0.12);
   noise(c, 'bandpass', 4200, 1.5, 0.25 * k, 0.28);
+  if (smash) {
+    // Sub-bass boom and a sharp crack on top
+    tone(c, 'sine', 70, 24, 1.0, 0.6);
+    noise(c, 'highpass', 2500, 0.7, 0.5, 0.08);
+    noise(c, 'lowpass', 400, 0.7, 0.7, 0.45);
+  }
 }
 
 /** Successful parry: bright ring + deep clunk so it reads as "denied" */

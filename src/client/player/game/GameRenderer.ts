@@ -82,6 +82,7 @@ export class GameRenderer {
   private bladeSparkAccum = 0;
   private calloutEl = document.getElementById('ability-callout');
   private calloutTimer: ReturnType<typeof setTimeout> | null = null;
+  private smashEl = document.getElementById('smash');
   private comboEl = document.getElementById('combo');
   private comboCountEl = document.getElementById('combo-count');
   private combo = 0;
@@ -308,22 +309,26 @@ export class GameRenderer {
       }
       case 'hit': {
         const p = new THREE.Vector3(...event.point);
-        const strength = Math.min(1, event.speed / 14);
-        this.vfx.spawnHitFlash(p);
-        this.fighters.get(event.defender)?.react(strength);
+        // Everything scales with swing power so a big swing visibly lands harder
+        const strength = event.power;
+        const smash = event.smash;
+        this.vfx.spawnHitFlash(p, smash ? 1.7 : 0.7 + strength * 0.6);
+        this.fighters.get(event.defender)?.react(smash ? 1.3 : strength);
         this.setCombo(event.attacker === this.mySlot ? this.combo + 1 : 0);
         if (event.defender === this.mySlot) {
           // Got hit: rocked backward, view widens, red flash
-          this.vfx.triggerScreenShake(1.4 + strength * 1.2);
-          this.vfx.screenFlash(0xff3030, 0.3, 0.15);
-          this.camKick = Math.max(this.camKick, 0.25 + strength * 0.2);
-          this.fovKick = 8 + strength * 6;
+          this.vfx.triggerScreenShake((1.0 + strength * 1.8) * (smash ? 1.5 : 1));
+          this.vfx.screenFlash(0xff3030, smash ? 0.45 : 0.3, smash ? 0.25 : 0.15);
+          this.camKick = Math.max(this.camKick, 0.2 + strength * 0.3 + (smash ? 0.2 : 0));
+          this.fovKick = 6 + strength * 8 + (smash ? 6 : 0);
         } else {
           // Landed it: short punch-in zoom
-          this.vfx.triggerScreenShake(0.8 + strength * 0.6);
-          this.fovKick = -(4 + strength * 4);
+          this.vfx.triggerScreenShake((0.5 + strength * 1.0) * (smash ? 1.6 : 1));
+          this.fovKick = -(3 + strength * 6 + (smash ? 4 : 0));
+          if (smash) this.vfx.screenFlash(0xfff0b0, 0.3, 0.12);
         }
-        Audio.playHit(strength);
+        if (smash) this.showSmash();
+        Audio.playHit(strength, smash);
         break;
       }
       case 'block': {
@@ -408,6 +413,14 @@ export class GameRenderer {
       void this.comboEl.offsetWidth;
       this.comboEl.classList.add('bump');
     }
+  }
+
+  /** Comic "SMASH!" pop for an all-out swing that connects */
+  private showSmash(): void {
+    if (!this.smashEl) return;
+    this.smashEl.classList.remove('show');
+    void this.smashEl.offsetWidth;
+    this.smashEl.classList.add('show');
   }
 
   /** Brief text line naming who used which ability */

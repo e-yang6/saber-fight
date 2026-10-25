@@ -274,12 +274,12 @@ export class VFX {
   }
 
   /** Big, vibrant comic starburst hit marker on top of where the fighter was struck (no sparks) */
-  spawnHitFlash(position: THREE.Vector3): void {
-    this.spawnComicHitMarker(position);
+  spawnHitFlash(position: THREE.Vector3, scale = 1): void {
+    this.spawnComicHitMarker(position, scale);
   }
 
   /** Spawn a single comic starburst hit marker on the contact point */
-  spawnComicHitMarker(position: THREE.Vector3): void {
+  spawnComicHitMarker(position: THREE.Vector3, scale = 1): void {
     // Find available pooled hit marker or recycle oldest active
     let marker: ComicHitMarker | undefined = this.hitMarkerPool.find(m => !m.mesh.visible);
     if (!marker && this.activeHitMarkers.length > 0) {
@@ -287,6 +287,7 @@ export class VFX {
     }
     if (!marker) return;
 
+    marker.baseScale = HIT_MARKER_SCALE * scale;
     marker.mesh.position.copy(position);
     marker.ring.position.copy(position);
     if (this.camera) {

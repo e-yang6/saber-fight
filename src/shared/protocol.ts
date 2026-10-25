@@ -217,7 +217,11 @@ export interface FighterSnapshot {
 
 export type GameEvent =
   | { kind: 'clash'; point: Vec3Tuple }
-  | { kind: 'hit'; attacker: PlayerSlot; defender: PlayerSlot; point: Vec3Tuple; speed: number }
+  | {
+    kind: 'hit'; attacker: PlayerSlot; defender: PlayerSlot; point: Vec3Tuple; speed: number;
+    /** 0..1 swing power that scaled the knockback; smash = an all-out swing */
+    power: number; smash: boolean;
+  }
   | { kind: 'block'; blocker: PlayerSlot; point: Vec3Tuple }
   | { kind: 'fall'; slot: PlayerSlot }
   | { kind: 'shockwave'; slot: PlayerSlot; position: Vec3Tuple }
