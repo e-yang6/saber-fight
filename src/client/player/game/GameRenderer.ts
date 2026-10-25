@@ -84,8 +84,7 @@ export class GameRenderer {
   private comboCountEl = document.getElementById('combo-count');
   private combo = 0;
   private powerEl = document.getElementById('power');
-  private powerRingEl = document.getElementById('power-ring');
-  private powerTimeEl = document.getElementById('power-time');
+  private powerFillEl = document.getElementById('power-fill');
   private powerNameEl = document.getElementById('power-name');
 
   constructor(canvas: HTMLCanvasElement, mySlot: PlayerSlot) {
@@ -266,16 +265,15 @@ export class GameRenderer {
   }
 
   private updatePowerMeter(me: FighterSnapshot, inMatch: boolean): void {
-    if (!this.powerEl || !this.powerRingEl || !this.powerTimeEl || !this.powerNameEl) return;
+    if (!this.powerEl || !this.powerFillEl || !this.powerNameEl) return;
     this.powerEl.classList.toggle('show', inMatch);
     if (!inMatch) return;
     const ability = CLASS_CONFIGS[me.className].ability;
     const ready = me.cooldownRemaining <= 0;
     const progress = ready ? 1 : 1 - me.cooldownRemaining / ability.cooldown;
     this.powerEl.classList.toggle('ready', ready);
-    this.powerRingEl.style.setProperty('--p', progress.toFixed(3));
-    this.powerTimeEl.textContent = ready ? 'READY' : String(Math.ceil(me.cooldownRemaining));
-    this.powerNameEl.textContent = ability.name;
+    this.powerFillEl.style.width = `${(progress * 100).toFixed(1)}%`;
+    this.powerNameEl.textContent = ready ? `${ability.name}: READY` : ability.name;
   }
 
   /** One swoosh per swing (rising edge with hysteresis), not one per snapshot */

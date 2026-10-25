@@ -123,32 +123,42 @@ h1 { font-weight: normal; font-size: 32px; }
   }
 }
 
-/* Power cooldown: bottom left; the ring fills clockwise as --p goes 0 → 1 */
+/* Power cooldown: energy bolt + bar that fills as the power recharges */
 #power {
   position: absolute; left: 24px; bottom: 48px; z-index: 6;
-  display: none; align-items: center; gap: 12px;
+  display: none; align-items: center; gap: 10px;
   pointer-events: none;
   text-shadow: 0 2px 6px rgba(0,0,0,0.6);
 }
 #power.show { display: flex; }
-#power-ring {
-  --p: 1;
-  width: 72px; height: 72px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  background:
-    radial-gradient(closest-side, rgba(10,14,28,0.75) 78%, transparent 80%),
-    conic-gradient(#ffd23a calc(var(--p) * 360deg), rgba(255,255,255,0.18) 0);
+#power-icon {
+  width: 44px; height: 44px;
+  fill: rgba(255,255,255,0.35);
+  stroke: rgba(0,0,0,0.55); stroke-width: 1.2; stroke-linejoin: round;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+  transition: fill 0.2s ease;
 }
-#power-time { font-size: 22px; font-weight: 700; }
-#power-name { font-size: 18px; }
-#power.ready #power-time { font-size: 14px; color: #ffd23a; }
-#power.ready #power-ring {
-  box-shadow: 0 0 14px rgba(255, 210, 58, 0.7);
-  animation: power-ready 1.2s ease-in-out infinite alternate;
+#power-info { display: flex; flex-direction: column; gap: 4px; }
+#power-name { font-size: 15px; }
+#power-bar {
+  width: 180px; height: 14px; border-radius: 7px; overflow: hidden;
+  background: rgba(10,14,28,0.6);
+  border: 2px solid rgba(255,255,255,0.35);
 }
+#power-fill {
+  height: 100%; width: 0%;
+  background: linear-gradient(90deg, #ff9a1a, #ffd23a);
+  border-radius: 5px;
+}
+#power.ready #power-icon {
+  fill: #ffd23a;
+  animation: power-ready 0.9s ease-in-out infinite alternate;
+}
+#power.ready #power-fill { background: linear-gradient(90deg, #ffd23a, #fff3b0); }
+#power.ready #power-bar { border-color: #ffd23a; box-shadow: 0 0 10px rgba(255,210,58,0.6); }
 @keyframes power-ready {
-  from { box-shadow: 0 0 6px rgba(255, 210, 58, 0.4); }
-  to { box-shadow: 0 0 18px rgba(255, 210, 58, 0.9); }
+  from { filter: drop-shadow(0 0 3px rgba(255,210,58,0.5)); transform: scale(1); }
+  to { filter: drop-shadow(0 0 10px rgba(255,210,58,1)); transform: scale(1.1); }
 }
 
 #overlay {
