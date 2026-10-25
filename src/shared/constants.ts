@@ -34,13 +34,16 @@ export const IDEAL_FIGHT_DISTANCE = 1.8; // target distance between fighters (au
 export const MIN_FIGHT_DISTANCE = 1.0; // don't let fighters overlap
 export const AUTO_ADVANCE_SPEED = 2.0; // m/s fighters close the gap
 export const WATER_LEVEL = -8.0; // bay surface below the platform; touching it loses the round
+/** Off the edge: heavier-than-real gravity plus an initial drop so the ring-out lands in ~0.7s */
+export const FALL_GRAVITY = 25;
+export const FALL_START_SPEED = 3;
 
 // ─── Match ──────────────────────────────────────────────────────────
 
 export const ROUNDS_TO_WIN = 2; // best of 3
 export const COUNTDOWN_SECONDS = 3;
 export const ROUND_END_DELAY_MS = 2500;
-export const SLOWMO_DURATION_MS = 1000;
+export const SLOWMO_DURATION_MS = 400;
 export const SLOWMO_FACTOR = 0.25;
 
 // ─── Saber dimensions ──────────────────────────────────────────────

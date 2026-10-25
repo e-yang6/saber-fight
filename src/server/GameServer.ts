@@ -18,7 +18,7 @@ import {
   HIT_HITSTOP_MS, CLASH_PUSHBACK, BLOCK_PUSHBACK, GYRO_STALE_MS,
   BLADE_LENGTH, BLADE_RADIUS, HILT_LENGTH,
   BODY_CAPSULE_RADIUS, BODY_CAPSULE_HEIGHT,
-  PLATFORM_RADIUS, WATER_LEVEL,
+  PLATFORM_RADIUS, WATER_LEVEL, FALL_GRAVITY, FALL_START_SPEED,
   FIGHTER_START_DISTANCE, IDEAL_FIGHT_DISTANCE, MIN_FIGHT_DISTANCE, AUTO_ADVANCE_SPEED,
   ROUNDS_TO_WIN,
   COUNTDOWN_SECONDS, ROUND_END_DELAY_MS,
@@ -571,7 +571,7 @@ export class GameServer {
       f.position.y = 0;
       f.velocity.y = 0;
     } else {
-      f.velocity.y -= 9.8 * dt;
+      f.velocity.y -= FALL_GRAVITY * dt;
       f.position.y += f.velocity.y * dt;
     }
   }
@@ -612,6 +612,7 @@ export class GameServer {
     const dist = Math.sqrt(f.position.x ** 2 + f.position.z ** 2);
     if (dist > PLATFORM_RADIUS && f.onPlatform) {
       f.onPlatform = false;
+      f.velocity.y = -FALL_START_SPEED;
       this.slowmoUntil = now + SLOWMO_DURATION_MS;
     }
     if (f.position.y < WATER_LEVEL && !f.fallen) {
