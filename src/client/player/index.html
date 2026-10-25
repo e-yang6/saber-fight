@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Saber Fight!</title>
+  <meta name="description" content="Multiplayer motion-controlled saber duel game with 3D combat, physics, mobile phone controller, and solo practice mode.">
+  <meta property="og:title" content="Saber Fight!">
+  <meta property="og:description" content="Multiplayer motion-controlled saber duel game with 3D combat, physics, mobile phone controller, and solo practice mode.">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div id="lobby" class="screen active">
+    <h1>Saber Fight!</h1>
+    <p id="lobby-status">Connecting...</p>
+    <canvas id="qr-canvas"></canvas>
+    <p id="lobby-url"></p>
+    <p id="controller-status"></p>
+    <button id="btn-solo-lobby" style="margin-top: 12px; padding: 10px 24px; font-size: 16px; background: #222; color: #fff; border: 1px solid #555; cursor: pointer; border-radius: 6px;">Play Solo vs Bot (Mouse &amp; Keyboard)</button>
+  </div>
+
+  <div id="class-select-screen" class="screen">
+    <h1>Waiting for class selection on your phone</h1>
+    <p id="class-info">—</p>
+    <p id="opponent-status">Waiting for opponent...</p>
+  </div>
+
+  <canvas id="game-canvas"></canvas>
+
+  <div id="hud" style="display:none">
+    <div id="hud-left">
+      <span id="hud-p1-score">0</span>
+    </div>
+    <div id="hud-center">
+      <span id="hud-round"></span>
+    </div>
+    <div id="hud-right">
+      <span id="hud-p2-score">0</span>
+    </div>
+  </div>
+
+  <div id="overlay" style="display:none">
+    <div id="overlay-content">
+      <h1 id="overlay-title"></h1>
+      <p id="overlay-subtitle"></p>
+      <button id="overlay-btn" style="display:none">Rematch</button>
+    </div>
+  </div>
+
+  <div id="debug-bar" style="display:none">
+    <span id="dbg-info">Debug: mouse=sword, space=block, E=power</span>
+  </div>
+
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

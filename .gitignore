@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.pem
+*.key
+.env
+bun.lock
+.aistudio/
+
