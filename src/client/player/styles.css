@@ -37,7 +37,6 @@ body {
   -webkit-text-stroke: 3px #5a3a00;
   paint-order: stroke fill;
   text-shadow: 0 6px 0 #5a3a00, 0 10px 24px rgba(0,0,0,0.45);
-  transform: rotate(-3deg);
 }
 .menu-card {
   display: flex; flex-direction: column; align-items: center; gap: 12px;
@@ -139,12 +138,8 @@ h1 { font-weight: normal; font-size: 32px; }
 #power-icon .power-outline {
   fill: none; stroke: rgba(255,255,255,0.75); stroke-width: 1.2; stroke-linejoin: round;
 }
-#power.ready #power-icon { animation: power-ready 0.9s ease-in-out infinite alternate; }
+#power.ready #power-icon { filter: drop-shadow(0 0 8px rgba(255,210,58,0.9)); }
 #power.ready #power-icon .power-outline { stroke: #fff6cc; }
-@keyframes power-ready {
-  from { filter: drop-shadow(0 0 3px rgba(255,210,58,0.5)); transform: scale(1); }
-  to { filter: drop-shadow(0 0 10px rgba(255,210,58,1)); transform: scale(1.1); }
-}
 
 #overlay {
   position: absolute; inset: 0; z-index: 20;
