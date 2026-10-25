@@ -87,9 +87,18 @@ async function main() {
   game.start();
 
   // ─── Vite dev middleware / static serving ────────────────────────
+  app.use((req, res, next) => {
+    if (req.path === '/' || req.path === '/player') {
+      return res.redirect('/player/');
+    }
+    if (req.path === '/controller') {
+      return res.redirect('/controller/');
+    }
+    next();
+  });
+
   if (process.env.NODE_ENV === 'production') {
     app.use(express.static(resolve(ROOT, 'dist/client')));
-    app.get('/', (_req, res) => res.redirect('/player/'));
     app.get('/player/*', (_req, res) => res.sendFile(resolve(ROOT, 'dist/client/player/index.html')));
     app.get('/controller/*', (_req, res) => res.sendFile(resolve(ROOT, 'dist/client/controller/index.html')));
   } else {
@@ -101,7 +110,6 @@ async function main() {
       },
       appType: 'mpa',
     });
-    app.get('/', (_req, res) => res.redirect('/player/'));
     app.use(vite.middlewares);
   }
 
