@@ -71,6 +71,9 @@ export class GameRenderer {
   private bladeSparkAccum = 0;
   private calloutEl = document.getElementById('ability-callout');
   private calloutTimer: ReturnType<typeof setTimeout> | null = null;
+  private comboEl = document.getElementById('combo');
+  private comboCountEl = document.getElementById('combo-count');
+  private combo = 0;
 
   constructor(canvas: HTMLCanvasElement, mySlot: PlayerSlot) {
     this.mySlot = mySlot;
@@ -205,6 +208,8 @@ export class GameRenderer {
 
     // Track countdown state for intro animation
     const inCountdown = snap.state === 'countdown';
+    // Fresh match: don't carry the combo over from the last one
+    if (inCountdown && snap.round === 1 && this.combo > 0) this.setCombo(0);
     if (inCountdown) {
       if (!this.isCountdown) {
         this.isCountdown = true;
@@ -271,6 +276,7 @@ export class GameRenderer {
         const strength = Math.min(1, event.speed / 14);
         this.vfx.spawnHitFlash(p);
         this.fighters.get(event.defender)?.react(strength);
+        this.setCombo(event.attacker === this.mySlot ? this.combo + 1 : 0);
         if (event.defender === this.mySlot) {
           // Got hit: rocked backward, view widens, red flash
           this.vfx.triggerScreenShake(1.4 + strength * 1.2);
@@ -345,6 +351,21 @@ export class GameRenderer {
         this.showAbilityCallout(event.slot, 'mystic');
         break;
       }
+    }
+  }
+
+  /** Bottom-middle combo meter: hidden at 0, pops on each hit, catches fire at 3+ */
+  private setCombo(n: number): void {
+    const grew = n > this.combo;
+    this.combo = n;
+    if (!this.comboEl || !this.comboCountEl) return;
+    this.comboCountEl.textContent = String(n);
+    this.comboEl.classList.toggle('show', n > 0);
+    this.comboEl.classList.toggle('on-fire', n >= 3);
+    if (grew) {
+      this.comboEl.classList.remove('bump');
+      void this.comboEl.offsetWidth;
+      this.comboEl.classList.add('bump');
     }
   }
 
