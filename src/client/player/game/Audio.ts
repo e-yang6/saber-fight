@@ -366,3 +366,84 @@ export function playSplash(): void {
   source.start(now);
   source.stop(now + 0.5);
 }
+
+/** Triumphant victory fanfare with brass harmonics and shimmer */
+export function playVictoryFanfare(): void {
+  const c = getCtx();
+  const now = c.currentTime;
+
+  const notes = [
+    { freq: 261.63, time: 0.0, dur: 0.16 },
+    { freq: 329.63, time: 0.14, dur: 0.16 },
+    { freq: 392.00, time: 0.28, dur: 0.22 },
+    { freq: 523.25, time: 0.46, dur: 0.55 },
+    { freq: 659.25, time: 0.72, dur: 0.65 },
+    { freq: 783.99, time: 0.95, dur: 1.4 },
+  ];
+
+  for (const n of notes) {
+    const t = now + n.time;
+    const osc1 = c.createOscillator();
+    osc1.type = 'sawtooth';
+    osc1.frequency.setValueAtTime(n.freq, t);
+
+    const osc2 = c.createOscillator();
+    osc2.type = 'triangle';
+    osc2.frequency.setValueAtTime(n.freq * 2, t);
+
+    const filter = c.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(1400, t);
+    filter.frequency.exponentialRampToValueAtTime(3200, t + 0.08);
+    filter.frequency.exponentialRampToValueAtTime(800, t + n.dur);
+
+    const gain = c.createGain();
+    gain.gain.setValueAtTime(0.001, t);
+    gain.gain.linearRampToValueAtTime(0.24, t + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + n.dur);
+
+    osc1.connect(filter);
+    osc2.connect(filter);
+    filter.connect(gain);
+    gain.connect(masterGain);
+
+    osc1.start(t);
+    osc2.start(t);
+    osc1.stop(t + n.dur);
+    osc2.stop(t + n.dur);
+  }
+}
+
+/** Melancholy dejected defeat synth sound */
+export function playDefeatSound(): void {
+  const c = getCtx();
+  const now = c.currentTime;
+
+  const notes = [
+    { freq: 392.00, time: 0.0, dur: 0.5 },
+    { freq: 311.13, time: 0.35, dur: 0.5 },
+    { freq: 293.66, time: 0.70, dur: 0.5 },
+    { freq: 261.63, time: 1.05, dur: 0.9 },
+    { freq: 196.00, time: 1.40, dur: 1.5 },
+  ];
+
+  for (const n of notes) {
+    const t = now + n.time;
+    const osc = c.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(n.freq, t);
+    osc.frequency.linearRampToValueAtTime(n.freq * 0.96, t + n.dur);
+
+    const gain = c.createGain();
+    gain.gain.setValueAtTime(0.001, t);
+    gain.gain.linearRampToValueAtTime(0.18, t + 0.08);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + n.dur);
+
+    osc.connect(gain);
+    gain.connect(masterGain);
+
+    osc.start(t);
+    osc.stop(t + n.dur);
+  }
+}
+

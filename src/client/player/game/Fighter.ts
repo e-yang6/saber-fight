@@ -42,6 +42,11 @@ export class Fighter {
   private bodyYaw = 0;
   private hasSnapshot = false;
 
+  private leftEyeGroup: THREE.Group | null = null;
+  private rightEyeGroup: THREE.Group | null = null;
+  private poseMode: 'normal' | 'celebrating' | 'crying' = 'normal';
+  private poseTime = 0;
+
   private flashMats: THREE.MeshStandardMaterial[] = [];
   /** Seconds since the last hit reaction; Infinity when idle */
   private reactT = Infinity;
@@ -63,6 +68,7 @@ export class Fighter {
     this.saber = new Saber();
     this.armGroup.add(this.saber.group);
   }
+
 
   /**
    * Nai Long: a chubby bean-shaped dragon whose big domed head flows straight into the body,
@@ -119,11 +125,14 @@ export class Fighter {
       eye.position.set(side * 0.2, 1.28, 0.3);
       eye.rotation.y = side * 0.45;
       this.body.add(eye);
+      if (side === -1) this.leftEyeGroup = eye;
+      else this.rightEyeGroup = eye;
       blob(eyeWhite, [0, 0, 0], [0.11, 0.12, 0.07], eye).castShadow = false;
       blob(iris, [0, -0.005, 0.045], [0.068, 0.076, 0.032], eye).castShadow = false;
       blob(pupil, [0, -0.005, 0.068], [0.036, 0.044, 0.014], eye).castShadow = false;
       blob(shine, [0.022, 0.03, 0.082], [0.016, 0.018, 0.006], eye).castShadow = false;
     }
+
 
     // Short stumpy legs with toe claws
     for (const side of [-1, 1]) {
@@ -138,6 +147,8 @@ export class Fighter {
 
   /** Apply server snapshot. Pass opponent position so body faces them. */
   applySnapshot(snap: FighterSnapshot, opponentPos?: [number, number, number]): void {
+    if (this.poseMode !== 'normal') return;
+
     this.targetPos.set(snap.position[0], snap.position[1], snap.position[2]);
 
     // Dynamically face opponent
@@ -171,6 +182,80 @@ export class Fighter {
     }
   }
 
+  /** Set fighter into victorious celebration */
+  setCelebration(): void {
+    this.poseMode = 'celebrating';
+    this.poseTime = 0;
+    this.group.position.set(0, 0, 0);
+    this.group.rotation.set(0, 0, 0);
+    this.bodyYaw = 0;
+    this.body.scale.set(1, 1, 1);
+    this.body.rotation.set(0, 0, 0);
+
+    // Reattach saber to armGroup if detached
+    if (this.saber.group.parent !== this.armGroup) {
+      this.armGroup.add(this.saber.group);
+    }
+    this.saber.group.position.set(0, 0, 0);
+    this.saber.group.rotation.set(0, 0, 0);
+    this.saber.setBladeScale(1.2);
+    this.saber.setStunned(false);
+  }
+
+  /** Set fighter into weeping slumped defeat */
+  setWeeping(): void {
+    this.poseMode = 'crying';
+    this.poseTime = 0;
+    this.group.position.set(0, -0.22, 0);
+    this.group.rotation.set(0, 0, 0);
+    this.bodyYaw = 0;
+
+    // Drop saber onto platform floor beside fighter
+    this.group.add(this.saber.group);
+    this.saber.group.position.set(0.38, 0.05, 0.18);
+    this.saber.group.rotation.set(Math.PI / 2, 0.35, 0.2);
+    this.saber.setBladeScale(0); // Extinguished
+    this.saber.setStunned(false);
+  }
+
+  /** Restore default combat pose */
+  resetPose(): void {
+    this.poseMode = 'normal';
+    this.poseTime = 0;
+    this.group.position.set(0, 0, 0);
+    this.group.rotation.set(0, 0, 0);
+    this.body.scale.set(1, 1, 1);
+    this.body.rotation.set(0, 0, 0);
+
+    // Reattach saber to armGroup
+    if (this.saber.group.parent !== this.armGroup) {
+      this.armGroup.add(this.saber.group);
+    }
+    this.armGroup.position.copy(HAND_POS);
+    this.armGroup.rotation.set(0, 0, 0);
+    this.saber.group.position.set(0, 0, 0);
+    this.saber.group.rotation.set(0, 0, 0);
+    this.saber.setBladeScale(1.0);
+  }
+
+  /** World coordinates of left and right eyes for tear particles */
+  getEyeWorldPositions(): { left: THREE.Vector3; right: THREE.Vector3 } {
+    const left = new THREE.Vector3();
+    const right = new THREE.Vector3();
+    if (this.leftEyeGroup && this.rightEyeGroup) {
+      this.leftEyeGroup.getWorldPosition(left);
+      this.rightEyeGroup.getWorldPosition(right);
+      left.z += 0.08;
+      right.z += 0.08;
+    } else {
+      this.group.getWorldPosition(left);
+      this.group.getWorldPosition(right);
+      left.add(new THREE.Vector3(-0.16, 1.25, 0.35));
+      right.add(new THREE.Vector3(0.16, 1.25, 0.35));
+    }
+    return { left, right };
+  }
+
   /** Visual recoil: white flash + squash + lean back. `strength` 0..1. */
   react(strength: number): void {
     this.reactT = 0;
@@ -178,6 +263,49 @@ export class Fighter {
   }
 
   update(dt: number): void {
+    if (this.poseMode === 'celebrating') {
+      this.poseTime += dt;
+      const t = this.poseTime;
+
+      // Joyful celebratory jumping / bouncing
+      const hop = Math.abs(Math.sin(t * 6)) * 0.18;
+      this.group.position.set(0, hop, 0);
+      this.group.rotation.y = Math.sin(t * 2.5) * 0.18;
+
+      // Happy squash and stretch
+      this.body.scale.set(1 - hop * 0.35, 1 + hop * 0.5, 1 - hop * 0.35);
+      this.body.rotation.z = Math.sin(t * 5) * 0.08;
+      this.body.rotation.x = -0.15 + Math.sin(t * 6) * 0.08;
+
+      // Saber floats overhead spinning in victory flourish!
+      this.armGroup.position.set(0, 1.55 + hop * 0.5, 0.15);
+      this.armGroup.rotation.set(-Math.PI * 0.35, Math.sin(t * 4) * 0.4, t * 4);
+
+      this.saber.update(dt);
+      return;
+    }
+
+    if (this.poseMode === 'crying') {
+      this.poseTime += dt;
+      const t = this.poseTime;
+
+      // Slumped low onto the floor
+      this.group.position.set(0, -0.25, 0);
+      this.group.rotation.set(0, 0, 0);
+
+      // Heavy sad sobbing heaves
+      const heave = Math.sin(t * 3.6) * 0.05;
+      this.body.scale.set(1.05 + heave * 0.5, 0.92 - heave, 1.05 + heave * 0.5);
+      this.body.rotation.x = 0.45 + heave * 1.5;
+      this.body.rotation.z = Math.sin(t * 1.8) * 0.04;
+
+      this.armGroup.position.set(0, 0.5, 0.2);
+      this.armGroup.rotation.set(0.3, 0, 0);
+
+      this.saber.update(dt);
+      return;
+    }
+
     // Big jumps (respawn, new round) snap instead of gliding across the arena
     if (this.group.position.distanceToSquared(this.targetPos) > 4) {
       this.group.position.copy(this.targetPos);
@@ -204,6 +332,7 @@ export class Fighter {
       this.barrierTime = 0;
     }
   }
+
 
   private updateReaction(dt: number): void {
     if (this.reactT === Infinity) return;
